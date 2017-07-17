@@ -1,0 +1,12 @@
+Source: libpam-gooroom-authenticator
+Section: admin
+Priority: optional
+Maintainer: Gooroom Maintainers <gooroom@gooroom.kr> 
+Build-Depends: debhelper (>= 9), libpam0g-dev | libpam-dev, dh-autoreconf, pkg-config, libglib2.0-dev, libcurl4-gnutls-dev, libjson-c-dev
+Standards-Version: 3.9.8
+Homepage: https://git.gooroom.kr/libpam-gooroom-authenticator
+
+Package: libpam-gooroom-authenticator
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Gooroom desktop authentication pam module

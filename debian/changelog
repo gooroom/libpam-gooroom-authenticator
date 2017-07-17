@@ -1,0 +1,5 @@
+libpam-gooroom-authenticator (0.1-1) unstable; urgency=low
+
+  * Initial release.
+
+ -- Gooroom <gooroom@gooroom.kr>  Mon, 15 May 2017 14:43:10 +0900
