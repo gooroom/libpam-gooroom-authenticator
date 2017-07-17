@@ -1,4 +1,4 @@
-libpam-gooroom-authenticator (0.1-1) unstable; urgency=low
+libpam-gooroom-authenticator (0.1.0) unstable; urgency=low
 
   * Initial release.
 
