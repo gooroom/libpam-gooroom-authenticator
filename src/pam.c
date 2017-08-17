@@ -41,6 +41,7 @@
 
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
+#define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
 
 
 
@@ -51,6 +52,27 @@ struct MemoryStruct {
 
 
 
+static gboolean
+is_online_account (const char *user)
+{
+	struct passwd *user_entry = getpwnam (user);
+	if (!user_entry)
+		return TRUE;
+
+	gboolean ret = FALSE;
+
+	char **tokens = g_strsplit (user_entry->pw_gecos, ",", -1);
+
+	if (g_strv_length (tokens) > 4 ) {
+		if (tokens[4] && (g_strcmp0 (tokens[4], "gooroom-online-account") == 0)) {
+			ret = TRUE;
+		}
+	}
+
+	g_strfreev (tokens);
+
+	return ret;
+}
 
 static char *
 parse_url (const pam_handle_t *pamh, int flags, int argc, const char **argv)
@@ -319,9 +341,9 @@ add_account (const char *username, const char *realname)
 	char *cmd = NULL;
 
 	if (realname) {
-		cmd = g_strdup_printf ("/usr/sbin/useradd %s -c %s,,gooroom-online-account -m -s /bin/bash", username, realname);
+		cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", realname, GOOROOM_ONLINE_ACCOUNT, username);
 	} else {
-		cmd = g_strdup_printf ("/usr/sbin/useradd %s -c %s,,gooroom-online-account -m -s /bin/bash", username, username);
+		cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", username, GOOROOM_ONLINE_ACCOUNT, username);
 	}
 
 	g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
@@ -505,6 +527,11 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_SERVICE_ERR;
 	}
 
+	if (!is_online_account (user)) {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth : Not an online account");
+		return PAM_IGNORE;
+	}
+
     url = parse_url (pamh, flags, argc, argv);
     if (!url) {
 		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Couldn't get URL");
@@ -552,6 +579,11 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_SERVICE_ERR;
 	}
 
+	if (!is_online_account (user)) {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth : Not an online account");
+		return PAM_IGNORE;
+	}
+
 	/* Get the stored authtok here */
 	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS) {
 		data = NULL;
@@ -579,6 +611,11 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Couldn't get user name");
 		return PAM_SERVICE_ERR;
+	}
+
+	if (!is_online_account (user)) {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth : Not an online account");
+		return PAM_IGNORE;
 	}
 
 	url = parse_url (pamh, flags, argc, argv);
