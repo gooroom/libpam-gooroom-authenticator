@@ -34,6 +34,8 @@
 #include <curl/curl.h>
 #include <json-c/json.h>
 
+#include <openssl/sha.h>
+
 #include "pam_mount_template.h"
 
 
@@ -52,6 +54,25 @@ struct MemoryStruct {
 
 
 
+static char *
+create_sha256_hash (const char *message)
+{
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+
+	SHA256_CTX ctx;
+	SHA256_Init(&ctx);
+	SHA256_Update(&ctx, message, strlen (message));
+	SHA256_Final(digest, &ctx);
+
+	char *str_hash = g_new0 (char, SHA256_DIGEST_LENGTH*2+1);
+	memset (str_hash, 0x00, SHA256_DIGEST_LENGTH*2+1);
+
+	for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+		sprintf (&str_hash[i*2], "%02x", (unsigned int)digest[i]);
+
+	return str_hash;
+}
+
 static gboolean
 is_online_account (const char *user)
 {
@@ -64,7 +85,7 @@ is_online_account (const char *user)
 	char **tokens = g_strsplit (user_entry->pw_gecos, ",", -1);
 
 	if (g_strv_length (tokens) > 4 ) {
-		if (tokens[4] && (g_strcmp0 (tokens[4], "gooroom-online-account") == 0)) {
+		if (tokens[4] && (g_strcmp0 (tokens[4], GOOROOM_ONLINE_ACCOUNT) == 0)) {
 			ret = TRUE;
 		}
 	}
@@ -372,8 +393,12 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 	curl = curl_easy_init ();
 
 	if (curl) {
+		char *sha256pw = create_sha256_hash (password);
+		char *user_sha256pw = g_strdup_printf ("%s%s", user, sha256pw);
+		char *sha256_user_sha256pw= create_sha256_hash (user_sha256pw);
+
 		char *url = g_strdup_printf ("https://%s/glm/v1/pam/auth", host);
-		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, password);
+		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, sha256_user_sha256pw);
 
 		curl_easy_setopt (curl, CURLOPT_URL, url);
 		curl_easy_setopt(curl, CURLOPT_SSLCERT, "/etc/ssl/certs/gooroom_client.crt");
@@ -389,6 +414,10 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 
 		res = curl_easy_perform (curl);
 		curl_easy_cleanup (curl);
+
+		g_free (sha256pw);
+		g_free (user_sha256pw);
+		g_free (sha256_user_sha256pw);
 
 		g_free (url);
 		g_free (post_fields);

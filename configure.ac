@@ -31,6 +31,7 @@ AC_MSG_NOTICE([PAM installation path $PAMDIR])
 PKG_CHECK_MODULES([GLIB], [glib-2.0])
 PKG_CHECK_MODULES([CURL], [libcurl])
 PKG_CHECK_MODULES([JSON_C], [json-c])
++PKG_CHECK_MODULES([CRYPTO], [libcrypto])
 
 AC_CONFIG_FILES([
 	Makefile
