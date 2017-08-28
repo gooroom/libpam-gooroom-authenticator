@@ -26,16 +26,19 @@
 #include <pwd.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <locale.h>
 
 #include <security/pam_modules.h>
 #include <security/pam_ext.h>
 
-#include <glib-object.h>
+#include <glib.h>
 #include <curl/curl.h>
 #include <json-c/json.h>
 
 #include <openssl/sha.h>
 
+#include "common.h"
+#include "nfc_auth.h"
 #include "pam_mount_template.h"
 
 
@@ -96,7 +99,7 @@ is_online_account (const char *user)
 }
 
 static char *
-parse_url (const pam_handle_t *pamh, int flags, int argc, const char **argv)
+parse_url (void)
 {
 	char     *url     = NULL;
 	GError   *error   = NULL;
@@ -140,8 +143,7 @@ write_memory_callback (void *contents, size_t size, size_t nmemb, void *userp)
 static void
 change_mode_and_owner (const char *user, const char *file)
 {
-	if (!file)
-		return;
+	if (!file) return;
 
 	struct passwd *user_entry = getpwnam (user);
 
@@ -375,6 +377,99 @@ add_account (const char *username, const char *realname)
 	return FALSE;
 }
 
+static char *
+get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const char *user, const char *password)
+{
+	CURL *curl;
+	CURLcode res = CURLE_OK;
+	char *data = NULL, *retval = NULL;
+	struct MemoryStruct chunk;
+
+	chunk.size = 0;
+	chunk.memory = malloc (1);
+
+	curl_global_init (CURL_GLOBAL_ALL);
+
+	/* get a curl handle */
+	curl = curl_easy_init ();
+
+	if (curl) {
+		char *sha256pw = create_sha256_hash (password);
+		char *user_sha256pw = g_strdup_printf ("%s%s", user, sha256pw);
+		char *sha256_user_sha256pw= create_sha256_hash (user_sha256pw);
+
+		char *url = g_strdup_printf ("https://%s/glm/v1/pam/nfc", host);
+		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, sha256_user_sha256pw);
+
+		curl_easy_setopt (curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_SSLCERT, "/etc/ssl/certs/gooroom_client.crt");
+		curl_easy_setopt(curl, CURLOPT_SSLKEY, "/etc/ssl/private/gooroom_client.key");
+
+		/* Now specify the POST data */
+		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
+
+		/* set timeout */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 3); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
+		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+
+		res = curl_easy_perform (curl);
+		curl_easy_cleanup (curl);
+
+		g_free (sha256pw);
+		g_free (user_sha256pw);
+		g_free (sha256_user_sha256pw);
+
+		g_free (url);
+		g_free (post_fields);
+	}
+
+	curl_global_cleanup ();
+	if (res != CURLE_OK) {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Failed to request authentication for NFC.");
+		goto done;
+	}
+
+	data = g_strdup (chunk.memory);
+	if (!data) {
+		goto done;
+	}
+
+	if (is_result_ok (data)) {
+		json_object *root_obj;
+		enum json_tokener_error jerr = json_tokener_success;
+
+		root_obj = json_tokener_parse_verbose (data, &jerr);
+		if (jerr == json_tokener_success) {
+			json_object *ret_data_obj = NULL;
+			json_object_object_get_ex (root_obj, "data", &ret_data_obj);
+			if (ret_data_obj) {
+				json_object *nfc_dt_obj = NULL;
+				json_object_object_get_ex (ret_data_obj, "nfc_secret_data", &nfc_dt_obj);
+
+				if (nfc_dt_obj) {
+					retval = g_strdup (json_object_get_string (nfc_dt_obj));
+					json_object_put (nfc_dt_obj);
+				}
+
+				json_object_put (ret_data_obj);
+			}
+		}
+
+		if (root_obj)
+			json_object_put (root_obj);
+	} else {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Authentication is failed for NFC.");
+	}
+
+	g_free (data);
+
+done:
+	g_free (chunk.memory);
+
+	return retval;
+}
+
 static int
 login_from_online (pam_handle_t *pamh, const char *host, const char *user, const char *password)
 {
@@ -436,19 +531,13 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		goto done;
 	}
 
-	FILE *fp = fopen ("/tmp/debug.txt", "a+");
-	fprintf (fp, "==============================================\n");
-	fprintf (fp, "%s\n", data);
-	fprintf (fp, "==============================================\n");
-	fclose (fp);
-
 	if (is_result_ok (data)) {
 		char *real = get_real_name (data);
 		if (add_account (user, real)) {
 			/* store data for future reference */
 			pam_set_data (pamh, "user_data", g_strdup (chunk.memory), cleanup_data);
 
-			/* for pam_mount.so */
+			/* for pam_mount */
 			json_object *root_obj;
 			enum json_tokener_error jerr = json_tokener_success;
 
@@ -547,9 +636,16 @@ logout_from_online (const char *host, const char *token)
 PAM_EXTERN int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
+	guint i;
 	int retval;
+	gboolean two_factor = FALSE;
 	char *url = NULL;
-    const char *user, *password;
+	const char *user, *password;
+
+    /* Initialize i18n */
+	setlocale(LC_ALL, "");
+	bindtextdomain(PACKAGE, LOCALEDIR);
+	textdomain(PACKAGE);
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Couldn't get user name");
@@ -561,17 +657,50 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_IGNORE;
 	}
 
-    url = parse_url (pamh, flags, argc, argv);
-    if (!url) {
+	url = parse_url ();
+	if (!url) {
 		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Couldn't get URL");
 		return PAM_IGNORE;
-    }
+	}
 
 	if (pam_get_item (pamh, PAM_AUTHTOK, (const void **)&password) != PAM_SUCCESS) {
 		return PAM_SERVICE_ERR;
 	}
 
+	for (i = 0; i < argc; i++) {
+		if (argv[i] != NULL) {
+			if(g_str_equal (argv[i], "two-factor")) {
+				two_factor = TRUE;
+			}
+		}
+	}
+
 	retval = login_from_online (pamh, url, user, password);
+
+	if (two_factor && retval == PAM_SUCCESS) {
+		retval = PAM_AUTH_ERR;
+		char *data = NULL;
+		if (nfc_data_get (pamh, &data)) {
+			if (data) {
+				/* user name + nfc serial num + nfc data */
+				char *user_plus_data = g_strdup_printf ("%s%s", user, data);
+				char *user_plus_data_sha256 = create_sha256_hash (user_plus_data);
+				char *two_factor_hash = get_two_factor_hash_from_online (pamh, url, user, password);
+
+				if (user_plus_data_sha256 && two_factor_hash &&
+					g_strcmp0 (user_plus_data_sha256, two_factor_hash) == 0) {
+					retval = PAM_SUCCESS;
+				} else {
+					pam_msg (pamh, _("Failure of the Two-Factor Authentication"));
+				}
+
+				g_free (user_plus_data);
+				g_free (user_plus_data_sha256);
+				g_free (two_factor_hash);
+			}
+		}
+		g_free (data);
+	}
 
 	g_free (url);
 
@@ -647,7 +776,7 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 		return PAM_IGNORE;
 	}
 
-	url = parse_url (pamh, flags, argc, argv);
+	url = parse_url ();
 	if (!url) {
 		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Couldn't get URL");
 		return PAM_IGNORE;

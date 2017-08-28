@@ -6,10 +6,20 @@ AM_MAINTAINER_MODE
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([no-dist-gzip dist-xz foreign])
 
+AM_GNU_GETTEXT([external])
+
+ALL_LINGUAS="en_US ko"
+
 AC_PREREQ([2.59])
 AC_PROG_CC
 AC_PROG_CC_STDC
 AM_PROG_CC_C_O
+
+dnl **************************
+dnl *** Initialize libtool ***
+dnl **************************
+LT_PREREQ([2.2.6])
+LT_INIT([disable-static])
 
 AC_CHECK_HEADER([security/pam_modules.h], ,
 	[AC_MSG_ERROR([PAM headers missing])])
@@ -31,10 +41,12 @@ AC_MSG_NOTICE([PAM installation path $PAMDIR])
 PKG_CHECK_MODULES([GLIB], [glib-2.0])
 PKG_CHECK_MODULES([CURL], [libcurl])
 PKG_CHECK_MODULES([JSON_C], [json-c])
-+PKG_CHECK_MODULES([CRYPTO], [libcrypto])
+PKG_CHECK_MODULES([CRYPTO], [libcrypto])
+PKG_CHECK_MODULES([PCSCLITE], [libpcsclite])
 
 AC_CONFIG_FILES([
 	Makefile
+	po/Makefile.in
 	src/Makefile
 ])
 AC_OUTPUT

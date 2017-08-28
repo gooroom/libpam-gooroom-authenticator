@@ -1,0 +1,63 @@
+# English translations for libpam-gooroom-authenticator package.
+# Copyright (C) 2015-2017 libpam-gooroom-authenticator'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the libpam-gooroom-authenticator package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2017-08-28 06:13+0000\n"
+"PO-Revision-Date: 2017-08-24 07:57+0000\n"
+"Language-Team: English\n"
+"Language: en_US\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/nfc_auth.c:250 src/nfc_auth.c:274 src/nfc_auth.c:290
+msgid "Not enough memory"
+msgstr "Not enough memory"
+
+#: src/nfc_auth.c:267 src/nfc_auth.c:317 src/nfc_auth.c:409
+msgid "Reader is not available."
+msgstr "Reader is not available."
+
+#: src/nfc_auth.c:345
+msgid "Ignore this reader."
+msgstr "Ignore this reader."
+
+#: src/nfc_auth.c:350
+msgid "Unknown Reader."
+msgstr "Unknown Reader."
+
+#: src/nfc_auth.c:355
+msgid "Status unavailable."
+msgstr "Status unavailable."
+
+#: src/nfc_auth.c:361
+msgid "Tap your card."
+msgstr "Tap your card."
+
+#: src/nfc_auth.c:379
+msgid "ATR matches card."
+msgstr "ATR matches card."
+
+#: src/nfc_auth.c:384
+msgid "Exclusive Mode."
+msgstr "Exclusive Mode."
+
+#: src/nfc_auth.c:389
+msgid "Shared Mode."
+msgstr "Shared Mode."
+
+#: src/nfc_auth.c:394
+msgid "Unresponsive card."
+msgstr "Unresponsive card."
+
+#: src/nfc_auth.c:403
+msgid "Input Timeout."
+msgstr "Input Timeout."
+
+msgid "Failure of the Two-Factor Authentication"
+msgstr "Failure of the Two-Factor Authentication"
