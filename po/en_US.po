@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-08-28 06:13+0000\n"
-"PO-Revision-Date: 2017-08-24 07:57+0000\n"
+"POT-Creation-Date: 2017-08-30 05:44+0000\n"
+"PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: English\n"
 "Language: en_US\n"
 "MIME-Version: 1.0\n"
@@ -15,49 +15,50 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/nfc_auth.c:250 src/nfc_auth.c:274 src/nfc_auth.c:290
+#: src/pam.c:722
+msgid "Failure of the Two-Factor Authentication"
+msgstr "Failure of the Two-Factor Authentication"
+
+#: src/nfc_auth.c:223 src/nfc_auth.c:247 src/nfc_auth.c:263
 msgid "Not enough memory"
 msgstr "Not enough memory"
 
-#: src/nfc_auth.c:267 src/nfc_auth.c:317 src/nfc_auth.c:409
+#: src/nfc_auth.c:240 src/nfc_auth.c:290 src/nfc_auth.c:382
 msgid "Reader is not available."
 msgstr "Reader is not available."
 
-#: src/nfc_auth.c:345
+#: src/nfc_auth.c:318
 msgid "Ignore this reader."
 msgstr "Ignore this reader."
 
-#: src/nfc_auth.c:350
+#: src/nfc_auth.c:323
 msgid "Unknown Reader."
 msgstr "Unknown Reader."
 
-#: src/nfc_auth.c:355
+#: src/nfc_auth.c:328
 msgid "Status unavailable."
 msgstr "Status unavailable."
 
-#: src/nfc_auth.c:361
+#: src/nfc_auth.c:334
 msgid "Tap your card."
 msgstr "Tap your card."
 
-#: src/nfc_auth.c:379
+#: src/nfc_auth.c:352
 msgid "ATR matches card."
 msgstr "ATR matches card."
 
-#: src/nfc_auth.c:384
+#: src/nfc_auth.c:357
 msgid "Exclusive Mode."
 msgstr "Exclusive Mode."
 
-#: src/nfc_auth.c:389
+#: src/nfc_auth.c:362
 msgid "Shared Mode."
 msgstr "Shared Mode."
 
-#: src/nfc_auth.c:394
+#: src/nfc_auth.c:367
 msgid "Unresponsive card."
 msgstr "Unresponsive card."
 
-#: src/nfc_auth.c:403
+#: src/nfc_auth.c:376
 msgid "Input Timeout."
 msgstr "Input Timeout."
-
-msgid "Failure of the Two-Factor Authentication"
-msgstr "Failure of the Two-Factor Authentication"

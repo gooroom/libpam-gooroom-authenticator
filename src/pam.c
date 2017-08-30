@@ -32,6 +32,8 @@
 #include <security/pam_ext.h>
 
 #include <glib.h>
+#include <gio/gio.h>
+#include <glib/gstdio.h>
 #include <curl/curl.h>
 #include <json-c/json.h>
 
@@ -44,6 +46,8 @@
 
 #define GRM_AUTH_LOG_ERR     (LOG_ERR | LOG_AUTHPRIV)
 
+#define GRM_USER                        ".grm-user"
+#define GRAC_RULE                       ".grac.conf"
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 #define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
@@ -56,6 +60,16 @@ struct MemoryStruct {
 };
 
 
+json_object *JSON_OBJECT_GET (json_object *root_obj, const char *key)
+{
+	if (!root_obj) return NULL;
+
+	json_object *ret_obj = NULL;
+
+	json_object_object_get_ex (root_obj, key, &ret_obj);
+
+	return ret_obj;
+}
 
 static char *
 create_sha256_hash (const char *message)
@@ -96,6 +110,21 @@ is_online_account (const char *user)
 	g_strfreev (tokens);
 
 	return ret;
+}
+
+static void
+delete_config_files (const char *user)
+{
+	gchar *grm_user = g_strdup_printf ("/home/%s/%s", user, GRM_USER);
+	gchar *grac_rule = g_strdup_printf ("/home/%s/%s", user, GRAC_RULE);
+
+	/* delete /home/$USER/.grm-user */
+	g_remove (grm_user);
+	/* delete /home/$USER/.grac.conf */
+	g_remove (grac_rule);
+
+	g_free (grm_user);
+	g_free (grac_rule);
 }
 
 static char *
@@ -216,24 +245,20 @@ make_mount_xml (json_object *root_obj)
 
 			if (protocol_obj && url_obj && mountpoint_obj) {
 				const char *protocol = json_object_get_string (protocol_obj);
-				if (g_strcmp0 (protocol, "webdav") == 0) {
+				if (protocol && g_strcmp0 (protocol, "webdav") == 0) {
 					const char *url = json_object_get_string (url_obj);
 					const char *mountpoint = json_object_get_string (mountpoint_obj);
-					if (is_mount_possible (url)) {
+					if (url && mountpoint && is_mount_possible (url)) {
 						volume_def_data = g_strdup_printf (pam_mount_volume_definitions, url, mountpoint);
 					}
 				}
-
-				json_object_put (protocol_obj);
-				json_object_put (url_obj);
-				json_object_put (mountpoint_obj);
 			}
-
-			json_object_put (mount_obj);
+			json_object_put (protocol_obj);
+			json_object_put (url_obj);
+			json_object_put (mountpoint_obj);
 		}
-
+		json_object_put (mount_obj);
 	}
-
 	json_object_put (mounts_obj);
 
 done:
@@ -256,66 +281,47 @@ done:
 }
 
 static char *
-get_real_name (char *data)
+get_real_name (char *json_data)
 {
 	char *ret = NULL;
-	json_object *root_obj;
 	enum json_tokener_error jerr = json_tokener_success;
-
-	root_obj = json_tokener_parse_verbose (data, &jerr);
+	json_object *root_obj = json_tokener_parse_verbose (json_data, &jerr);
 	if (jerr == json_tokener_success) {
-		json_object *ret_data_obj = NULL;
-		json_object_object_get_ex (root_obj, "data", &ret_data_obj);
-		if (ret_data_obj) {
-			json_object *login_info_obj = NULL;
-			json_object_object_get_ex (ret_data_obj, "loginInfo", &login_info_obj);
-			if (login_info_obj) {
-				json_object *user_name_obj = NULL;
-				json_object_object_get_ex (login_info_obj, "user_name", &user_name_obj);
-				if (user_name_obj) {
-					ret = g_strdup (json_object_get_string (user_name_obj));
-					json_object_put (user_name_obj);
-				}
-				json_object_put (login_info_obj);
-			}
-			json_object_put (ret_data_obj);
+		json_object *obj1 = NULL, *obj2 = NULL, *obj3 = NULL;
+		obj1 = JSON_OBJECT_GET (root_obj, "data");
+		obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
+		obj3 = JSON_OBJECT_GET (obj2, "user_name");
+		if (obj3) {
+			ret = g_strdup (json_object_get_string (obj3));
 		}
+		json_object_put (obj1);
+		json_object_put (obj2);
+		json_object_put (obj3);
 	}
-
-	if (root_obj)
-		json_object_put (root_obj);
+	json_object_put (root_obj);
 
 	return ret;
 }
 
 static gboolean
-is_result_ok (char *data)
+is_result_ok (char *json_data)
 {
 	gboolean ret = FALSE;
-	json_object *obj;
 	enum json_tokener_error jerr = json_tokener_success;
+	json_object *root_obj = json_tokener_parse_verbose (json_data, &jerr);
 
-	obj = json_tokener_parse_verbose (data, &jerr);
-	if (obj) {
-		json_object *status_obj = NULL;
-		json_object_object_get_ex (obj, "status", &status_obj);
-		if (status_obj) {
-			json_object *result_obj = NULL;
-			json_object_object_get_ex (status_obj, "result", &result_obj);
-			if (result_obj) {
-				const char *result = json_object_get_string (result_obj);
-				if (g_strcmp0 (result, "SUCCESS") == 0) {
-					ret = TRUE;
-				} else {
-					ret = FALSE;
-				}
-
-				json_object_put (result_obj);
-			}
-			json_object_put (status_obj);
+	if (jerr == json_tokener_success) {
+		json_object *obj1 = NULL, *obj2 = NULL;
+		obj1 = JSON_OBJECT_GET (root_obj, "status");
+		obj2 = JSON_OBJECT_GET (obj1, "result");
+		if (obj2) {
+			const char *result = json_object_get_string (obj2);
+			ret = (g_strcmp0 (result, "SUCCESS") == 0) ? TRUE : FALSE;
 		}
-		json_object_put (obj);
+		json_object_put (obj1);
+		json_object_put (obj2);
 	}
+	json_object_put (root_obj);
 
 	return ret;
 }
@@ -436,28 +442,19 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 	}
 
 	if (is_result_ok (data)) {
-		json_object *root_obj;
 		enum json_tokener_error jerr = json_tokener_success;
-
-		root_obj = json_tokener_parse_verbose (data, &jerr);
+		json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
 		if (jerr == json_tokener_success) {
-			json_object *ret_data_obj = NULL;
-			json_object_object_get_ex (root_obj, "data", &ret_data_obj);
-			if (ret_data_obj) {
-				json_object *nfc_dt_obj = NULL;
-				json_object_object_get_ex (ret_data_obj, "nfc_secret_data", &nfc_dt_obj);
-
-				if (nfc_dt_obj) {
-					retval = g_strdup (json_object_get_string (nfc_dt_obj));
-					json_object_put (nfc_dt_obj);
-				}
-
-				json_object_put (ret_data_obj);
+			json_object *obj1 = NULL, *obj2 = NULL;
+			obj1 = JSON_OBJECT_GET (root_obj, "data");
+			obj2 = JSON_OBJECT_GET (obj1, "nfc_secret_data");
+			if (obj2) {
+				retval = g_strdup (json_object_get_string (obj2));
 			}
+			json_object_put (obj1);
+			json_object_put (obj2);
 		}
-
-		if (root_obj)
-			json_object_put (root_obj);
+		json_object_put (root_obj);
 	} else {
 		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Authentication is failed for NFC.");
 	}
@@ -538,28 +535,20 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			pam_set_data (pamh, "user_data", g_strdup (chunk.memory), cleanup_data);
 
 			/* for pam_mount */
-			json_object *root_obj;
 			enum json_tokener_error jerr = json_tokener_success;
+			json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
 
-			root_obj = json_tokener_parse_verbose (data, &jerr);
 			if (jerr == json_tokener_success) {
-				json_object *ret_data_obj = NULL;
-				json_object_object_get_ex (root_obj, "data", &ret_data_obj);
-				if (ret_data_obj) {
-					json_object *dt_info_obj = NULL;
-					json_object_object_get_ex (ret_data_obj, "desktopInfo", &dt_info_obj);
-
-					if (dt_info_obj) {
-						make_mount_xml (dt_info_obj);
-						json_object_put (dt_info_obj);
-					}
-
-					json_object_put (ret_data_obj);
+				json_object *obj1 = NULL, *obj2 = NULL;
+				obj1 = JSON_OBJECT_GET (root_obj, "data");
+				obj2 = JSON_OBJECT_GET (obj1, "desktopInfo");
+				if (obj2) {
+					make_mount_xml (obj2);
 				}
+				json_object_put (obj1);
+				json_object_put (obj2);
 			}
-
-			if (root_obj)
-				json_object_put (root_obj);
+			json_object_put (root_obj);
 
 			retval = PAM_SUCCESS;
 		} else {
@@ -633,6 +622,45 @@ logout_from_online (const char *host, const char *token)
 	return retval;
 }
 
+static void
+request_to_save_grac_rule (pam_handle_t *pamh, const char *user)
+{
+	GVariant   *variant;
+	GDBusProxy *proxy;
+	GError     *error = NULL;
+
+	proxy = g_dbus_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM,
+			G_DBUS_CALL_FLAGS_NONE,
+			NULL,
+			"kr.gooroom.agent",
+			"/kr/gooroom/agent",
+			"kr.gooroom.agent",
+			NULL,
+			&error);
+
+	if (proxy) {
+		const gchar *json = "{\"module\":{\"module_name\":\"config\",\"task\":{\"task_name\":\"set_authority_config\",\"in\":{\"login_id\":\"%s\"}}}}";
+
+		gchar *arg = g_strdup_printf (json, user);
+
+		variant = g_dbus_proxy_call_sync (proxy, "do_task",
+				g_variant_new ("(s)", arg),
+				G_DBUS_CALL_FLAGS_NONE, -1, NULL, &error);
+
+		g_free (arg);
+
+		if (variant) {
+			g_variant_unref (variant);
+		} else {
+			syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: %s", error->message);
+			g_error_free (error);
+		}
+	} else {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: %s", error->message);
+		g_error_free (error);
+	}
+}
+
 PAM_EXTERN int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
@@ -642,7 +670,7 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	char *url = NULL;
 	const char *user, *password;
 
-    /* Initialize i18n */
+	/* Initialize i18n */
 	setlocale(LC_ALL, "");
 	bindtextdomain(PACKAGE, LOCALEDIR);
 	textdomain(PACKAGE);
@@ -688,7 +716,7 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 				char *two_factor_hash = get_two_factor_hash_from_online (pamh, url, user, password);
 
 				if (user_plus_data_sha256 && two_factor_hash &&
-					g_strcmp0 (user_plus_data_sha256, two_factor_hash) == 0) {
+						g_strcmp0 (user_plus_data_sha256, two_factor_hash) == 0) {
 					retval = PAM_SUCCESS;
 				} else {
 					pam_msg (pamh, _("Failure of the Two-Factor Authentication"));
@@ -712,20 +740,6 @@ pam_sm_setcred (pam_handle_t * pamh, int flags, int argc, const char **argv)
 {
 	return PAM_SUCCESS;
 }
-
-#if 0
-PAM_EXTERN int
-pam_sm_acct_mgmt (pam_handle_t * pamh, int flags, int argc, const char *argv[])
-{
-	return PAM_IGNORE;
-}
-
-PAM_EXTERN int
-pam_sm_chauthtok(pam_handle_t * pamh, int flags, int argc, const char **argv)
-{
-	return PAM_IGNORE;
-}
-#endif
 
 PAM_EXTERN int
 pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
@@ -751,10 +765,15 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_IGNORE;
 	}
 
-	char *file = g_strdup_printf ("/home/%s/.grm-user", user);
+	delete_config_files (user);
+
+	char *file = g_strdup_printf ("/home/%s/%s", user, GRM_USER);
 	g_file_set_contents (file, data, -1, NULL);
 	change_mode_and_owner (user, file);
 	g_free (file);
+
+	/* request to save resource access rule for GOOROOM system */
+	request_to_save_grac_rule (pamh, user);
 
 	return PAM_SUCCESS;
 }
@@ -787,32 +806,27 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 		data = NULL;
 	}
 
+	delete_config_files (user);
+
 	retval = PAM_IGNORE;
 
 	if (data) {
-		json_object *root_obj;
 		enum json_tokener_error jerr = json_tokener_success;
+		json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
 
-		root_obj = json_tokener_parse_verbose (data, &jerr);
 		if (jerr == json_tokener_success) {
-			json_object *ret_data_obj = NULL;
-			json_object_object_get_ex (root_obj, "data", &ret_data_obj);
-			if (ret_data_obj) {
-				json_object *login_info_obj = NULL;
-				json_object_object_get_ex (ret_data_obj, "loginInfo", &login_info_obj);
-				if (login_info_obj) {
-					json_object *login_token_obj = NULL;
-					json_object_object_get_ex (login_info_obj, "login_token", &login_token_obj);
-					if (login_token_obj) {
-						retval = logout_from_online (url, json_object_get_string (login_token_obj));
-						json_object_put (login_token_obj);
-					}
-					json_object_put (login_info_obj);
-				}
-				json_object_put (ret_data_obj);
+			json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
+			obj1 = JSON_OBJECT_GET (root_obj, "data");
+			obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
+			obj3 = JSON_OBJECT_GET (obj2, "login_token");
+			if (obj3) {
+				retval = logout_from_online (url, json_object_get_string (obj3));
 			}
-			json_object_put (root_obj);
+			json_object_put (obj1);
+			json_object_put (obj2);
+			json_object_put (obj3);
 		}
+		json_object_put (root_obj);
 	}
 
 	g_free (url);
