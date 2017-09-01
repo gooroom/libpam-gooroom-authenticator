@@ -15,12 +15,6 @@ AC_PROG_CC
 AC_PROG_CC_STDC
 AM_PROG_CC_C_O
 
-dnl **************************
-dnl *** Initialize libtool ***
-dnl **************************
-LT_PREREQ([2.2.6])
-LT_INIT([disable-static])
-
 AC_CHECK_HEADER([security/pam_modules.h], ,
 	[AC_MSG_ERROR([PAM headers missing])])
 AC_CHECK_LIB(pam, pam_start, [PAM_LIBS="-lpam"],

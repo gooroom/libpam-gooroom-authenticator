@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-08-30 05:44+0000\n"
+"POT-Creation-Date: 2017-09-01 12:26+0000\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Korean\n"
 "Language: ko\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:722
+#: src/pam.c:734
 msgid "Failure of the Two-Factor Authentication"
 msgstr ""
 "이중 인증에 실패하였습니다.\n"
@@ -43,7 +43,7 @@ msgstr "상태가 유효하지 않습니다."
 
 #: src/nfc_auth.c:334
 msgid "Tap your card."
-msgstr "카드를 리더기에 올려 주십시오."
+msgstr "추가 인증을 위해 카드를 리더기에 올려 주십시오."
 
 #: src/nfc_auth.c:352
 msgid "ATR matches card."

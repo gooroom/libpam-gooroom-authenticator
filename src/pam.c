@@ -377,6 +377,8 @@ add_account (const char *username, const char *realname)
 
 	g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
 
+	g_free (cmd);
+
 	if (is_user_exists (username))
 		return TRUE;
 
@@ -468,7 +470,7 @@ done:
 }
 
 static int
-login_from_online (pam_handle_t *pamh, const char *host, const char *user, const char *password)
+login_from_online (pam_handle_t *pamh, const char *host, const char *user, const char *password, gboolean debug_on)
 {
 	CURL *curl;
 	CURLcode res = CURLE_OK;
@@ -526,6 +528,14 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 	if (!data) {
 		retval = PAM_AUTH_ERR;
 		goto done;
+	}
+
+	if (debug_on) {
+		FILE *fp = fopen ("/var/tmp/libpam_grm_auth_debug", "a+");
+		fprintf (fp, "=================Received Data Start===================\n");
+		fprintf (fp, "%s\n", data);
+		fprintf (fp, "=================Received Data End=====================\n");
+		fclose (fp);
 	}
 
 	if (is_result_ok (data)) {
@@ -666,7 +676,7 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
 	guint i;
 	int retval;
-	gboolean two_factor = FALSE;
+	gboolean two_factor = FALSE, debug_on = FALSE;
 	char *url = NULL;
 	const char *user, *password;
 
@@ -697,13 +707,15 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	for (i = 0; i < argc; i++) {
 		if (argv[i] != NULL) {
-			if(g_str_equal (argv[i], "two-factor")) {
+			if(g_str_equal (argv[i], "two_factor")) {
 				two_factor = TRUE;
+			} else if(g_str_equal (argv[i], "debug_on")) {
+				debug_on = TRUE;
 			}
 		}
 	}
 
-	retval = login_from_online (pamh, url, user, password);
+	retval = login_from_online (pamh, url, user, password, debug_on);
 
 	if (two_factor && retval == PAM_SUCCESS) {
 		retval = PAM_AUTH_ERR;
@@ -738,6 +750,24 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN int
 pam_sm_setcred (pam_handle_t * pamh, int flags, int argc, const char **argv)
 {
+	return PAM_SUCCESS;
+}
+
+PAM_EXTERN int
+pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
+{
+	const char *user;
+
+	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Couldn't get user name");
+		return PAM_SERVICE_ERR;
+	}
+
+	if (!is_online_account (user)) {
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth : Not an online account");
+		return PAM_IGNORE;
+	}
+
 	return PAM_SUCCESS;
 }
 

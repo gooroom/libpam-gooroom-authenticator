@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-08-30 05:44+0000\n"
+"POT-Creation-Date: 2017-09-01 12:26+0000\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: English\n"
 "Language: en_US\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:722
+#: src/pam.c:734
 msgid "Failure of the Two-Factor Authentication"
 msgstr "Failure of the Two-Factor Authentication"
 
