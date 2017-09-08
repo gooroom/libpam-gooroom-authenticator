@@ -47,7 +47,6 @@
 #define GRM_AUTH_LOG_ERR     (LOG_ERR | LOG_AUTHPRIV)
 
 #define GRM_USER                        ".grm-user"
-#define GRAC_RULE                       ".grac.conf"
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 #define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
@@ -115,16 +114,31 @@ is_online_account (const char *user)
 static void
 delete_config_files (const char *user)
 {
-	gchar *grm_user = g_strdup_printf ("/var/run/user/%d/gooroom/%s", getuid (), GRM_USER);
-	gchar *grac_rule = g_strdup_printf ("/home/%s/%s", user, GRAC_RULE);
+	struct passwd *user_entry = getpwnam (user);
+	if (user_entry) {
+		gchar *grm_user = g_strdup_printf ("/var/run/user/%d/gooroom/%s", user_entry->pw_uid, GRM_USER);
 
-	/* delete /var/run/user/$(uid)/gooroom/.grm-user */
-	g_remove (grm_user);
-	/* delete /home/$USER/.grac.conf */
-	g_remove (grac_rule);
+		/* delete /var/run/user/$(uid)/gooroom/.grm-user */
+		g_remove (grm_user);
+		g_free (grm_user);
+	}
+}
 
-	g_free (grm_user);
-	g_free (grac_rule);
+static void
+make_sure_to_create_save_dir (const char *user)
+{
+	struct passwd *user_entry = getpwnam (user);
+	if (user_entry) {
+		char *gooroom_save_dir = g_strdup_printf ("/var/run/user/%d/gooroom", user_entry->pw_uid);
+
+		if (!g_file_test (gooroom_save_dir, G_FILE_TEST_EXISTS)) {
+			g_mkdir (gooroom_save_dir, 0700);
+
+			if (chown (gooroom_save_dir, user_entry->pw_uid, user_entry->pw_gid) == -1) {
+			}
+		}
+		g_free (gooroom_save_dir);
+	}
 }
 
 static char *
@@ -795,12 +809,18 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_IGNORE;
 	}
 
+	/* make suer to make /var/run/user/$(uid)/gooroom directory */
+	make_sure_to_create_save_dir (user);
+
 	delete_config_files (user);
 
-	char *file = g_strdup_printf ("/var/run/user/%d/gooroom/%s", getuid (), GRM_USER);
-	g_file_set_contents (file, data, -1, NULL);
-	change_mode_and_owner (user, file);
-	g_free (file);
+	struct passwd *user_entry = getpwnam (user);
+	if (user_entry) {
+		char *grm_user = g_strdup_printf ("/var/run/user/%d/gooroom/%s", user_entry->pw_uid, GRM_USER);
+		g_file_set_contents (grm_user, data, -1, NULL);
+		change_mode_and_owner (user, grm_user);
+		g_free (grm_user);
+	}
 
 	/* request to save resource access rule for GOOROOM system */
 	request_to_save_grac_rule (pamh, user);
