@@ -115,10 +115,10 @@ is_online_account (const char *user)
 static void
 delete_config_files (const char *user)
 {
-	gchar *grm_user = g_strdup_printf ("/home/%s/%s", user, GRM_USER);
+	gchar *grm_user = g_strdup_printf ("/var/run/user/%d/gooroom/%s", getuid (), GRM_USER);
 	gchar *grac_rule = g_strdup_printf ("/home/%s/%s", user, GRAC_RULE);
 
-	/* delete /home/$USER/.grm-user */
+	/* delete /var/run/user/$(uid)/gooroom/.grm-user */
 	g_remove (grm_user);
 	/* delete /home/$USER/.grac.conf */
 	g_remove (grac_rule);
@@ -797,7 +797,7 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	delete_config_files (user);
 
-	char *file = g_strdup_printf ("/home/%s/%s", user, GRM_USER);
+	char *file = g_strdup_printf ("/var/run/user/%d/gooroom/%s", getuid (), GRM_USER);
 	g_file_set_contents (file, data, -1, NULL);
 	change_mode_and_owner (user, file);
 	g_free (file);
