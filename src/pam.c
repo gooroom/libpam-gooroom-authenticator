@@ -378,15 +378,16 @@ is_user_exists (const char *username)
 static gboolean
 add_account (const char *username, const char *realname)
 {
-	if (is_user_exists (username))
-		return TRUE;
-
 	char *cmd = NULL;
 
-	if (realname) {
-		cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", realname, GOOROOM_ONLINE_ACCOUNT, username);
+	if (is_user_exists (username)) {
+		cmd = g_strdup_printf ("/usr/bin/chfn -f %s", realname ? realname : username);
 	} else {
-		cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", username, GOOROOM_ONLINE_ACCOUNT, username);
+		if (realname) {
+			cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", realname, GOOROOM_ONLINE_ACCOUNT, username);
+		} else {
+			cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", username, GOOROOM_ONLINE_ACCOUNT, username);
+		}
 	}
 
 	g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
