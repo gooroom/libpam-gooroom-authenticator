@@ -810,6 +810,9 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_IGNORE;
 	}
 
+	/* wait for /var/run/user/$(uid) directory to be created */
+	usleep (1000 * 200);
+
 	/* make suer to make /var/run/user/$(uid)/gooroom directory */
 	make_sure_to_create_save_dir (user);
 
