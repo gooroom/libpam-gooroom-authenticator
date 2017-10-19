@@ -59,7 +59,8 @@ struct MemoryStruct {
 };
 
 
-json_object *JSON_OBJECT_GET (json_object *root_obj, const char *key)
+json_object *
+JSON_OBJECT_GET (json_object *root_obj, const char *key)
 {
 	if (!root_obj) return NULL;
 
@@ -239,7 +240,7 @@ make_mount_xml (json_object *root_obj)
 	}
 
 	json_object *mounts_obj = NULL;
-	json_object_object_get_ex (root_obj, "mounts", &mounts_obj);
+	mounts_obj = JSON_OBJECT_GET (root_obj, "mounts");
 	if (!mounts_obj) {
 		goto done;
 	}
@@ -253,9 +254,9 @@ make_mount_xml (json_object *root_obj)
 		if (mount_obj) {
 			json_object *protocol_obj = NULL, *url_obj = NULL, *mountpoint_obj = NULL;
 
-			json_object_object_get_ex (mount_obj, "protocol", &protocol_obj);
-			json_object_object_get_ex (mount_obj, "url", &url_obj);
-			json_object_object_get_ex (mount_obj, "mountpoint", &mountpoint_obj);
+			protocol_obj   = JSON_OBJECT_GET (mount_obj, "protocol");
+			url_obj        = JSON_OBJECT_GET (mount_obj, "url");
+			mountpoint_obj = JSON_OBJECT_GET (mount_obj, "mountpoint");
 
 			if (protocol_obj && url_obj && mountpoint_obj) {
 				const char *protocol = json_object_get_string (protocol_obj);
@@ -267,13 +268,8 @@ make_mount_xml (json_object *root_obj)
 					}
 				}
 			}
-			json_object_put (protocol_obj);
-			json_object_put (url_obj);
-			json_object_put (mountpoint_obj);
 		}
-		json_object_put (mount_obj);
 	}
-	json_object_put (mounts_obj);
 
 done:
 	if (!volume_def_data)
@@ -308,11 +304,8 @@ get_real_name (char *json_data)
 		if (obj3) {
 			ret = g_strdup (json_object_get_string (obj3));
 		}
-		json_object_put (obj1);
-		json_object_put (obj2);
-		json_object_put (obj3);
+		json_object_put (root_obj);
 	}
-	json_object_put (root_obj);
 
 	return ret;
 }
@@ -332,10 +325,8 @@ is_result_ok (char *json_data)
 			const char *result = json_object_get_string (obj2);
 			ret = (g_strcmp0 (result, "SUCCESS") == 0) ? TRUE : FALSE;
 		}
-		json_object_put (obj1);
-		json_object_put (obj2);
+		json_object_put (root_obj);
 	}
-	json_object_put (root_obj);
 
 	return ret;
 }
@@ -468,10 +459,8 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 			if (obj2) {
 				retval = g_strdup (json_object_get_string (obj2));
 			}
-			json_object_put (obj1);
-			json_object_put (obj2);
+			json_object_put (root_obj);
 		}
-		json_object_put (root_obj);
 	} else {
 		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Authentication is failed for NFC.");
 	}
@@ -570,10 +559,9 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 				if (obj2) {
 					make_mount_xml (obj2);
 				}
-				json_object_put (obj1);
-				json_object_put (obj2);
+
+				json_object_put (root_obj);
 			}
-			json_object_put (root_obj);
 
 			retval = PAM_SUCCESS;
 		} else {
@@ -876,11 +864,9 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 			if (obj3) {
 				retval = logout_from_online (url, json_object_get_string (obj3));
 			}
-			json_object_put (obj1);
-			json_object_put (obj2);
-			json_object_put (obj3);
+
+			json_object_put (root_obj);
 		}
-		json_object_put (root_obj);
 	}
 
 	g_free (url);
