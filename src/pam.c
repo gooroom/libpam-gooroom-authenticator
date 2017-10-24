@@ -636,7 +636,7 @@ logout_from_online (const char *host, const char *token)
 }
 
 static void
-request_to_save_grac_rule (pam_handle_t *pamh, const char *user)
+send_request_to_agent (pam_handle_t *pamh, const char *request, const char *user)
 {
 	GVariant   *variant;
 	GDBusProxy *proxy;
@@ -652,9 +652,9 @@ request_to_save_grac_rule (pam_handle_t *pamh, const char *user)
 			&error);
 
 	if (proxy) {
-		const gchar *json = "{\"module\":{\"module_name\":\"config\",\"task\":{\"task_name\":\"set_authority_config\",\"in\":{\"login_id\":\"%s\"}}}}";
+		const gchar *json = "{\"module\":{\"module_name\":\"config\",\"task\":{\"task_name\":\"%s\",\"in\":{\"login_id\":\"%s\"}}}}";
 
-		gchar *arg = g_strdup_printf (json, user);
+		gchar *arg = g_strdup_printf (json, request, user);
 
 		variant = g_dbus_proxy_call_sync (proxy, "do_task",
 				g_variant_new ("(s)", arg),
@@ -815,7 +815,10 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	/* request to save resource access rule for GOOROOM system */
-	request_to_save_grac_rule (pamh, user);
+	send_request_to_agent (pamh, "set_authority_config", user);
+
+	/* request to check blocking packages change */
+	send_request_to_agent (pamh, "get_update_operation_with_loginid", user);
 
 	return PAM_SUCCESS;
 }
