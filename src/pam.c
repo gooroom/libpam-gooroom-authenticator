@@ -473,6 +473,119 @@ done:
 	return retval;
 }
 
+static gboolean
+user_logged_in (const char *username)
+{
+	gboolean logged_in = FALSE;
+	char *cmd = g_find_program_in_path ("users");
+	if (cmd) {
+		char *outputs = NULL;
+		g_spawn_command_line_sync (cmd, &outputs, NULL, NULL, NULL);
+		if (outputs) {
+			int i = 0;
+			char **lines = g_strsplit (outputs, "\n", -1);
+			for (i = 0; lines[i] != NULL; i++) {
+				int j = 0;
+				char **users = g_strsplit (lines[i], " ", -1);
+				for (j = 0; users[j] != NULL; j++) {
+					if (g_strcmp0 (users[j], username) == 0) {
+						logged_in = TRUE;
+						break;
+					}
+				}
+				g_strfreev (users);
+
+				if (logged_in)
+					break;
+			}
+			g_strfreev (lines);
+			g_free (outputs);
+		}
+		g_free (cmd);
+	}
+
+	return logged_in;
+}
+
+static int
+check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *password, gboolean debug_on)
+{
+	CURL *curl;
+	CURLcode res = CURLE_OK;
+	char *data = NULL;
+	int retval = PAM_IGNORE;
+	struct MemoryStruct chunk;
+
+	chunk.size = 0;
+	chunk.memory = malloc (1);
+
+	curl_global_init (CURL_GLOBAL_ALL);
+
+	/* get a curl handle */
+	curl = curl_easy_init ();
+
+	if (curl) {
+		char *sha256pw = create_sha256_hash (password);
+		char *user_sha256pw = g_strdup_printf ("%s%s", user, sha256pw);
+		char *sha256_user_sha256pw= create_sha256_hash (user_sha256pw);
+
+		char *url = g_strdup_printf ("https://%s/glm/v1/pam/authconfirm", host);
+		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, sha256_user_sha256pw);
+
+		curl_easy_setopt (curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_SSLCERT, "/etc/ssl/certs/gooroom_client.crt");
+		curl_easy_setopt(curl, CURLOPT_SSLKEY, "/etc/ssl/private/gooroom_client.key");
+
+		/* Now specify the POST data */
+		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
+
+		/* set timeout */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 3); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
+		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+
+		res = curl_easy_perform (curl);
+		curl_easy_cleanup (curl);
+
+		g_free (sha256pw);
+		g_free (user_sha256pw);
+		g_free (sha256_user_sha256pw);
+
+		g_free (url);
+		g_free (post_fields);
+	}
+
+	curl_global_cleanup ();
+	if (res != CURLE_OK) {
+		retval = PAM_AUTH_ERR;
+		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Failed to request authentication.");
+		goto done;
+	}
+
+	data = g_strdup (chunk.memory);
+	if (!data) {
+		retval = PAM_AUTH_ERR;
+		goto done;
+	}
+
+	if (debug_on) {
+		FILE *fp = fopen ("/var/tmp/libpam_grm_auth_debug", "a+");
+		fprintf (fp, "=================Received Data Start===================\n");
+		fprintf (fp, "%s\n", data);
+		fprintf (fp, "=================Received Data End=====================\n");
+		fclose (fp);
+	}
+
+	retval = is_result_ok (data) ? PAM_SUCCESS : PAM_AUTH_ERR;
+
+	g_free (data);
+
+done:
+	g_free (chunk.memory);
+
+	return retval;
+}
+
 static int
 login_from_online (pam_handle_t *pamh, const char *host, const char *user, const char *password, gboolean debug_on)
 {
@@ -718,7 +831,11 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		}
 	}
 
-	retval = login_from_online (pamh, url, user, password, debug_on);
+	if (user_logged_in (user)) {
+		retval = check_auth (pamh, url, user, password, debug_on);
+	} else {
+		retval = login_from_online (pamh, url, user, password, debug_on);
+	}
 
 	if (two_factor && retval == PAM_SUCCESS) {
 		retval = PAM_AUTH_ERR;
