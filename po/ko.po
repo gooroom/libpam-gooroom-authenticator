@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-09-01 12:26+0000\n"
+"POT-Creation-Date: 2017-10-30 17:37+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Korean\n"
 "Language: ko\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:734
+#: src/pam.c:855
 msgid "Failure of the Two-Factor Authentication"
 msgstr ""
 "이중 인증에 실패하였습니다.\n"
@@ -66,3 +66,12 @@ msgid "Input Timeout."
 msgstr ""
 "입력 시간이 초과 되었습니다.\n"
 "인증을 다시 시도 하시기 바랍니다."
+
+msgid "Failed to connect to server"
+msgstr "서버 연결에 실패하였습니다."
+
+msgid "Operation timeout"
+msgstr "서버 연결 시간이 초과하였습니다."
+
+msgid "Connection error"
+msgstr "서버 연결 에러가 발생하였습니다."

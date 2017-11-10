@@ -37,11 +37,10 @@
 #include <curl/curl.h>
 #include <json-c/json.h>
 
-#include <openssl/sha.h>
-
 #include "common.h"
 #include "nfc_auth.h"
 #include "pam_mount_template.h"
+#include "custom-hash-helper.h"
 
 
 #define GRM_AUTH_LOG_ERR     (LOG_ERR | LOG_AUTHPRIV)
@@ -50,14 +49,35 @@
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 #define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
-
-
+#define DEFAULT_TIMEOUT					3
 
 struct MemoryStruct {
 	char *memory;
 	size_t size;
 };
 
+
+static gboolean
+send_info_msg (pam_handle_t *pamh, const char *msg)
+{
+	const struct pam_message mymsg = {
+		.msg_style = PAM_TEXT_INFO,
+		.msg = msg,
+	};
+	const struct pam_message *msgp = &mymsg;
+	const struct pam_conv *pc;
+	struct pam_response *resp;
+	int r;
+
+	r = pam_get_item (pamh, PAM_CONV, (const void **) &pc);
+	if (r != PAM_SUCCESS)
+		return FALSE;
+
+	if (!pc || !pc->conv)
+		return FALSE;
+
+	return (pc->conv (1, &msgp, &resp, pc->appdata_ptr) == PAM_SUCCESS);
+}
 
 json_object *
 JSON_OBJECT_GET (json_object *root_obj, const char *key)
@@ -71,21 +91,45 @@ JSON_OBJECT_GET (json_object *root_obj, const char *key)
 	return ret_obj;
 }
 
+
 static char *
-create_sha256_hash (const char *message)
+create_hash (const char *user, const char *password, gpointer data)
 {
-	unsigned char digest[SHA256_DIGEST_LENGTH];
+	GError   *error        = NULL;
+	GKeyFile *keyfile      = NULL;
+	char     *str_hash     = NULL;
+	char     *organization = NULL;
 
-	SHA256_CTX ctx;
-	SHA256_Init(&ctx);
-	SHA256_Update(&ctx, message, strlen (message));
-	SHA256_Final(digest, &ctx);
+	keyfile = g_key_file_new ();
 
-	char *str_hash = g_new0 (char, SHA256_DIGEST_LENGTH*2+1);
-	memset (str_hash, 0x00, SHA256_DIGEST_LENGTH*2+1);
+	g_key_file_load_from_file (keyfile, GOOROOM_MANAGEMENT_SERVER_CONF, G_KEY_FILE_KEEP_COMMENTS, &error);
 
-	for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-		sprintf (&str_hash[i*2], "%02x", (unsigned int)digest[i]);
+	if (error == NULL) {
+		if (g_key_file_has_group (keyfile, "certificate")) {
+			organization = g_key_file_get_string (keyfile, "certificate", "organization", NULL);
+		}
+	}
+
+	if (!organization)
+		organization = g_strdup ("default");
+
+	guint i;
+	for (i = 0; i < G_N_ELEMENTS (hash_funcs); i++) {
+		char *(*hash_func) (const char *, const char *, gpointer);
+		hash_func = hash_funcs[i].hash_func;
+
+		if (g_str_equal (organization, hash_funcs[i].name)) {
+			str_hash = hash_func (user, password, data);
+			break;
+		}
+	}
+
+	if (!str_hash)
+		str_hash = create_hash_for_default (user, password, data);
+
+	g_free (organization);
+	g_key_file_free (keyfile);
+	g_clear_error (&error);
 
 	return str_hash;
 }
@@ -215,7 +259,7 @@ is_mount_possible (const char *url)
 		curl_easy_setopt (curl, CURLOPT_URL, url);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 3); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
 
 		res = curl_easy_perform (curl);
 		curl_easy_cleanup (curl);
@@ -374,10 +418,11 @@ add_account (const char *username, const char *realname)
 	if (is_user_exists (username)) {
 		cmd = g_strdup_printf ("/usr/bin/chfn -f %s", realname ? realname : username);
 	} else {
+		const char *cmd_prefix = "/usr/sbin/adduser --force-badname --shell /bin/bash --disabled-login --encrypt-home --gecos";
 		if (realname) {
-			cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", realname, GOOROOM_ONLINE_ACCOUNT, username);
+			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, realname, GOOROOM_ONLINE_ACCOUNT, username);
 		} else {
-			cmd = g_strdup_printf ("/usr/sbin/adduser --shell /bin/bash --disabled-login --encrypt-home --gecos \"%s,,,,%s\" %s", username, GOOROOM_ONLINE_ACCOUNT, username);
+			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, username, GOOROOM_ONLINE_ACCOUNT, username);
 		}
 	}
 
@@ -408,12 +453,10 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 	curl = curl_easy_init ();
 
 	if (curl) {
-		char *sha256pw = create_sha256_hash (password);
-		char *user_sha256pw = g_strdup_printf ("%s%s", user, sha256pw);
-		char *sha256_user_sha256pw= create_sha256_hash (user_sha256pw);
+		char *pw_hash = create_hash (user, password, NULL);
 
 		char *url = g_strdup_printf ("https://%s/glm/v1/pam/nfc", host);
-		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, sha256_user_sha256pw);
+		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, pw_hash);
 
 		curl_easy_setopt (curl, CURLOPT_URL, url);
 		curl_easy_setopt(curl, CURLOPT_SSLCERT, "/etc/ssl/certs/gooroom_client.crt");
@@ -423,16 +466,14 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 3); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
 		res = curl_easy_perform (curl);
 		curl_easy_cleanup (curl);
 
-		g_free (sha256pw);
-		g_free (user_sha256pw);
-		g_free (sha256_user_sha256pw);
+		g_free (pw_hash);
 
 		g_free (url);
 		g_free (post_fields);
@@ -525,12 +566,10 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 	curl = curl_easy_init ();
 
 	if (curl) {
-		char *sha256pw = create_sha256_hash (password);
-		char *user_sha256pw = g_strdup_printf ("%s%s", user, sha256pw);
-		char *sha256_user_sha256pw= create_sha256_hash (user_sha256pw);
+		char *pw_hash = create_hash (user, password, NULL);
 
 		char *url = g_strdup_printf ("https://%s/glm/v1/pam/authconfirm", host);
-		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, sha256_user_sha256pw);
+		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, pw_hash);
 
 		curl_easy_setopt (curl, CURLOPT_URL, url);
 		curl_easy_setopt(curl, CURLOPT_SSLCERT, "/etc/ssl/certs/gooroom_client.crt");
@@ -540,16 +579,14 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 3); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
 		res = curl_easy_perform (curl);
 		curl_easy_cleanup (curl);
 
-		g_free (sha256pw);
-		g_free (user_sha256pw);
-		g_free (sha256_user_sha256pw);
+		g_free (pw_hash);
 
 		g_free (url);
 		g_free (post_fields);
@@ -566,14 +603,6 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 	if (!data) {
 		retval = PAM_AUTH_ERR;
 		goto done;
-	}
-
-	if (debug_on) {
-		FILE *fp = fopen ("/var/tmp/libpam_grm_auth_debug", "a+");
-		fprintf (fp, "=================Received Data Start===================\n");
-		fprintf (fp, "%s\n", data);
-		fprintf (fp, "=================Received Data End=====================\n");
-		fclose (fp);
 	}
 
 	retval = is_result_ok (data) ? PAM_SUCCESS : PAM_AUTH_ERR;
@@ -604,12 +633,10 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 	curl = curl_easy_init ();
 
 	if (curl) {
-		char *sha256pw = create_sha256_hash (password);
-		char *user_sha256pw = g_strdup_printf ("%s%s", user, sha256pw);
-		char *sha256_user_sha256pw= create_sha256_hash (user_sha256pw);
+		char *pw_hash = create_hash (user, password, NULL);
 
 		char *url = g_strdup_printf ("https://%s/glm/v1/pam/auth", host);
-		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, sha256_user_sha256pw);
+		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, pw_hash);
 
 		curl_easy_setopt (curl, CURLOPT_URL, url);
 		curl_easy_setopt(curl, CURLOPT_SSLCERT, "/etc/ssl/certs/gooroom_client.crt");
@@ -619,16 +646,14 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 3); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
 		res = curl_easy_perform (curl);
 		curl_easy_cleanup (curl);
 
-		g_free (sha256pw);
-		g_free (user_sha256pw);
-		g_free (sha256_user_sha256pw);
+		g_free (pw_hash);
 
 		g_free (url);
 		g_free (post_fields);
@@ -637,7 +662,16 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 	curl_global_cleanup ();
 	if (res != CURLE_OK) {
 		retval = PAM_AUTH_ERR;
-		syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: Failed to request authentication.");
+		if (res == CURLE_COULDNT_CONNECT) {
+			syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: curl: Failed to connect to host or proxy.");
+			send_info_msg (pamh, _("Failed to connect to server"));
+		} else if (res == CURLE_OPERATION_TIMEDOUT) {
+			syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: curl: Operation timeout.");
+			send_info_msg (pamh, _("Operation timeout"));
+		} else {
+			syslog (GRM_AUTH_LOG_ERR, "pam_grm_auth: curl: Connection error.");
+			send_info_msg (pamh, _("Connection error"));
+		}
 		goto done;
 	}
 
@@ -724,7 +758,7 @@ logout_from_online (const char *host, const char *token)
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, 3); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -844,11 +878,11 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 			if (data) {
 				/* user name + nfc serial num + nfc data */
 				char *user_plus_data = g_strdup_printf ("%s%s", user, data);
-				char *user_plus_data_sha256 = create_sha256_hash (user_plus_data);
+				char *user_plus_data_sha256 = sha256_hash (user_plus_data);
 				char *two_factor_hash = get_two_factor_hash_from_online (pamh, url, user, password);
 
 				if (user_plus_data_sha256 && two_factor_hash &&
-						g_strcmp0 (user_plus_data_sha256, two_factor_hash) == 0) {
+					g_strcmp0 (user_plus_data_sha256, two_factor_hash) == 0) {
 					retval = PAM_SUCCESS;
 				} else {
 					pam_msg (pamh, _("Failure of the Two-Factor Authentication"));
