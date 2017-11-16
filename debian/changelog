@@ -1,3 +1,25 @@
+libpam-gooroom-authenticator (0.1.1+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [020f962f] Modify user creation command to support encrypted home folder
+  * [b8c66b12] Hash the user's password using the SHA-256 algorithm
+  * [829da800] Add function to support two-factor authentication
+  * [c61b1c04] Add function to request to save rules for GOOROOM system
+  * [38e7510b] Modify dependent packages in debian/control
+  * [71734e29] Add features to enable debug mode
+  * [2118e656] Change location of user information file (.grm-user)
+  * [8729d75e] Add function to create directory to store user information
+  * [b5db9fcd] Add the function to update realname of already existing online user
+  * [65a907ea] Add usleep function to wait for /var/run/user/ folder to be created.
+  * [be9041d2] Don't need to use json_object_put function
+  * [4b43ca2b] Add the function to send the request to check for update blocking.
+  * [9b52cc93] Checked the authentication only if user is already logged in.
+  * [590a214e] Add function to support for creating custom hash
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Thu, 16 Nov 2017 15:47:25 +0900
+
 libpam-gooroom-authenticator (0.1.0) unstable; urgency=low
 
   * Initial release.
