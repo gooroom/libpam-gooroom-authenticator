@@ -98,7 +98,7 @@ create_hash (const char *user, const char *password, gpointer data)
 	GError   *error        = NULL;
 	GKeyFile *keyfile      = NULL;
 	char     *str_hash     = NULL;
-	char     *organization = NULL;
+	char     *pw_system_type = NULL;
 
 	keyfile = g_key_file_new ();
 
@@ -106,19 +106,19 @@ create_hash (const char *user, const char *password, gpointer data)
 
 	if (error == NULL) {
 		if (g_key_file_has_group (keyfile, "certificate")) {
-			organization = g_key_file_get_string (keyfile, "certificate", "organization", NULL);
+			pw_system_type = g_key_file_get_string (keyfile, "certificate", "password_system_type", NULL);
 		}
 	}
 
-	if (!organization)
-		organization = g_strdup ("default");
+	if (!pw_system_type)
+		pw_system_type = g_strdup ("default");
 
 	guint i;
 	for (i = 0; i < G_N_ELEMENTS (hash_funcs); i++) {
 		char *(*hash_func) (const char *, const char *, gpointer);
 		hash_func = hash_funcs[i].hash_func;
 
-		if (g_str_equal (organization, hash_funcs[i].name)) {
+		if (g_str_equal (pw_system_type, hash_funcs[i].name)) {
 			str_hash = hash_func (user, password, data);
 			break;
 		}
@@ -127,7 +127,7 @@ create_hash (const char *user, const char *password, gpointer data)
 	if (!str_hash)
 		str_hash = create_hash_for_default (user, password, data);
 
-	g_free (organization);
+	g_free (pw_system_type);
 	g_key_file_free (keyfile);
 	g_clear_error (&error);
 

@@ -24,14 +24,14 @@
 
 #define HASH_FUNC(name, hash_func) {name, hash_func}
 
-char *create_hash_for_nia     (const char *user, const char *password, gpointer user_data);
+char *create_hash_for_type1     (const char *user, const char *password, gpointer user_data);
 char *create_hash_for_default (const char *user, const char *password, gpointer user_data);
 
 static struct {
 	const char *name;
 	char *(*hash_func)(const char *, const char *, gpointer);
 } hash_funcs [] = {
-	HASH_FUNC("nia", create_hash_for_nia),
+	HASH_FUNC("type1", create_hash_for_type1),
 	HASH_FUNC("default", create_hash_for_default)
 };
 
@@ -74,7 +74,7 @@ sha256_hash (const char *message)
 }
 
 char *
-create_hash_for_nia (const char *user, const char *password, gpointer user_data)
+create_hash_for_type1 (const char *user, const char *password, gpointer user_data)
 {
 	return md5_hash (password);
 }
