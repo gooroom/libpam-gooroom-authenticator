@@ -28,3 +28,6 @@ License: GPL-2+
  License version 2 can be found in the file
  `/usr/share/common-licenses/GPL-2'.
 
+Files: debian/*
+Copyright: 2011 LENART Janos <ocsi@debian.org>
+License: public-domain

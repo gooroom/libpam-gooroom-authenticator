@@ -75,3 +75,6 @@ msgstr "서버 연결 시간이 초과하였습니다."
 
 msgid "Connection error"
 msgstr "서버 연결 에러가 발생하였습니다."
+
+msgid "Failed to rewrap passphrase for ecryptfs"
+msgstr "암호화 파일시스템에 연결할 수 없습니다."

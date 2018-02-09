@@ -62,3 +62,15 @@ msgstr "Unresponsive card."
 #: src/nfc_auth.c:376
 msgid "Input Timeout."
 msgstr "Input Timeout."
+
+msgid "Failed to connect to server"
+msgstr "Failed to connect to server"
+
+msgid "Operation timeout"
+msgstr "Operation timeout"
+
+msgid "Connection error"
+msgstr "Connection error"
+
+msgid "Failed to rewrap passphrase for ecryptfs"
+msgstr "Failed to rewrap passphrase for ecryptfs"
