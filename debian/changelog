@@ -1,3 +1,15 @@
+libpam-gooroom-authenticator (0.1.2+grm1u1) unstable; urgency=medium
+
+  [ Heo, ChangJu ]
+  * [748eb652] Rename function name for MD5 hash
+
+  [ cjheo ]
+  * [9902d9f7] Rewrap the ecryptfs passphrase every time user log in because the ecryptfs passphrase is changed when the user change password
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Wed, 14 Mar 2018 17:48:13 +0900
+
 libpam-gooroom-authenticator (0.1.1+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
