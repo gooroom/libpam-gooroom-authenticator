@@ -25,6 +25,7 @@
 #define HASH_FUNC(name, hash_func) {name, hash_func}
 
 char *create_hash_for_type1     (const char *user, const char *password, gpointer user_data);
+char *create_hash_for_type2     (const char *user, const char *password, gpointer user_data);
 char *create_hash_for_default (const char *user, const char *password, gpointer user_data);
 
 static struct {
@@ -32,6 +33,7 @@ static struct {
 	char *(*hash_func)(const char *, const char *, gpointer);
 } hash_funcs [] = {
 	HASH_FUNC("type1", create_hash_for_type1),
+	HASH_FUNC("type2", create_hash_for_type2),
 	HASH_FUNC("default", create_hash_for_default)
 };
 
@@ -77,6 +79,12 @@ char *
 create_hash_for_type1 (const char *user, const char *password, gpointer user_data)
 {
 	return md5_hash (password);
+}
+
+char *
+create_hash_for_type2 (const char *user, const char *password, gpointer user_data)
+{
+	return g_strdup (password);
 }
 
 char *
