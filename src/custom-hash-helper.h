@@ -84,7 +84,7 @@ create_hash_for_type1 (const char *user, const char *password, gpointer user_dat
 char *
 create_hash_for_type2 (const char *user, const char *password, gpointer user_data)
 {
-	return g_strdup (password);
+	return g_uri_escape_string (password, NULL, TRUE);
 }
 
 char *
