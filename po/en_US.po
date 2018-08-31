@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-09-01 12:26+0000\n"
+"POT-Creation-Date: 2018-08-30 18:02+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: English\n"
 "Language: en_US\n"
@@ -15,62 +15,74 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:734
-msgid "Failure of the Two-Factor Authentication"
-msgstr "Failure of the Two-Factor Authentication"
-
-#: src/nfc_auth.c:223 src/nfc_auth.c:247 src/nfc_auth.c:263
-msgid "Not enough memory"
-msgstr "Not enough memory"
-
-#: src/nfc_auth.c:240 src/nfc_auth.c:290 src/nfc_auth.c:382
-msgid "Reader is not available."
-msgstr "Reader is not available."
-
-#: src/nfc_auth.c:318
-msgid "Ignore this reader."
-msgstr "Ignore this reader."
-
-#: src/nfc_auth.c:323
-msgid "Unknown Reader."
-msgstr "Unknown Reader."
-
-#: src/nfc_auth.c:328
-msgid "Status unavailable."
-msgstr "Status unavailable."
-
-#: src/nfc_auth.c:334
-msgid "Tap your card."
-msgstr "Tap your card."
-
-#: src/nfc_auth.c:352
-msgid "ATR matches card."
-msgstr "ATR matches card."
-
-#: src/nfc_auth.c:357
-msgid "Exclusive Mode."
-msgstr "Exclusive Mode."
-
-#: src/nfc_auth.c:362
-msgid "Shared Mode."
-msgstr "Shared Mode."
-
-#: src/nfc_auth.c:367
-msgid "Unresponsive card."
-msgstr "Unresponsive card."
-
-#: src/nfc_auth.c:376
-msgid "Input Timeout."
-msgstr "Input Timeout."
-
+#: src/pam.c:1033
 msgid "Failed to connect to server"
 msgstr "Failed to connect to server"
 
+#: src/pam.c:1036
 msgid "Operation timeout"
 msgstr "Operation timeout"
 
+#: src/pam.c:1039
 msgid "Connection error"
 msgstr "Connection error"
 
+#: src/pam.c:1364
+msgid "Failure of the Two-Factor Authentication"
+msgstr "Failure of the Two-Factor Authentication"
+
+#: src/pam.c:1378
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "Failed to rewrap passphrase for ecryptfs"
+
+#: src/pam.c:1650
+msgid "Passwords do not match."
+msgstr "Passwords do not match."
+
+#: src/pam.c:1657
+msgid "It's WAY too short."
+msgstr "It's WAY too short."
+
+#: src/nfc_auth.c:224 src/nfc_auth.c:248 src/nfc_auth.c:264
+msgid "Not enough memory"
+msgstr "Not enough memory"
+
+#: src/nfc_auth.c:241 src/nfc_auth.c:291 src/nfc_auth.c:383
+msgid "Reader is not available."
+msgstr "Reader is not available."
+
+#: src/nfc_auth.c:319
+msgid "Ignore this reader."
+msgstr "Ignore this reader."
+
+#: src/nfc_auth.c:324
+msgid "Unknown Reader."
+msgstr "Unknown Reader."
+
+#: src/nfc_auth.c:329
+msgid "Status unavailable."
+msgstr "Status unavailable."
+
+#: src/nfc_auth.c:335
+msgid "Tap your card."
+msgstr "Tap your card."
+
+#: src/nfc_auth.c:353
+msgid "ATR matches card."
+msgstr "ATR matches card."
+
+#: src/nfc_auth.c:358
+msgid "Exclusive Mode."
+msgstr "Exclusive Mode."
+
+#: src/nfc_auth.c:363
+msgid "Shared Mode."
+msgstr "Shared Mode."
+
+#: src/nfc_auth.c:368
+msgid "Unresponsive card."
+msgstr "Unresponsive card."
+
+#: src/nfc_auth.c:377
+msgid "Input Timeout."
+msgstr "Input Timeout."

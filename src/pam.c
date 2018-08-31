@@ -29,6 +29,7 @@
 #include <sys/fsuid.h>
 #include <grp.h>
 #include <locale.h>
+#include <shadow.h>
 
 #include <ecryptfs.h>
 
@@ -52,13 +53,15 @@
 #include "custom-hash-helper.h"
 
 
-#define GOOROOM_CERT					"/etc/ssl/certs/gooroom_client.crt"
-#define GOOROOM_PRIVATE_KEY				"/etc/ssl/private/gooroom_client.key"
+#define GOOROOM_CERT                    "/etc/ssl/certs/gooroom_client.crt"
+#define GOOROOM_PRIVATE_KEY             "/etc/ssl/private/gooroom_client.key"
 #define GRM_USER                        ".grm-user"
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 #define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
-#define DEFAULT_TIMEOUT					3
+#define DEFAULT_TIMEOUT                 3
+
+#define PAM_FORGET(X) if (X) {memset(X, 0, strlen(X));free(X);X = NULL;}
 
 struct MemoryStruct {
 	char *memory;
@@ -103,10 +106,10 @@ JSON_OBJECT_GET (json_object *root_obj, const char *key)
 static char *
 create_hash (const char *user, const char *password, gpointer data)
 {
-	GError   *error        = NULL;
-	GKeyFile *keyfile      = NULL;
-	char     *str_hash     = NULL;
-	char     *pw_system_type = NULL;
+	GError   *error    = NULL;
+	GKeyFile *keyfile  = NULL;
+	char *str_hash = NULL;
+	char *pw_system_type = NULL;
 
 	keyfile = g_key_file_new ();
 
@@ -309,8 +312,8 @@ make_mount_xml (json_object *root_obj)
 		if (mount_obj) {
 			json_object *protocol_obj = NULL, *url_obj = NULL, *mountpoint_obj = NULL;
 
-			protocol_obj   = JSON_OBJECT_GET (mount_obj, "protocol");
-			url_obj        = JSON_OBJECT_GET (mount_obj, "url");
+			protocol_obj = JSON_OBJECT_GET (mount_obj, "protocol");
+			url_obj = JSON_OBJECT_GET (mount_obj, "url");
 			mountpoint_obj = JSON_OBJECT_GET (mount_obj, "mountpoint");
 
 			if (protocol_obj && url_obj && mountpoint_obj) {
@@ -343,6 +346,63 @@ done:
 	}
 
 	g_free (volume_def_data);
+}
+
+static long
+strtoday (const char *date /* yyyy-mm-dd */)
+{
+	int year = 0, month = 0, day = 0;
+
+	if ((date != NULL) && (strlen (date) == 10) &&
+		(sscanf (date, "%d-%d-%d", &year, &month, &day) != 0)) {
+
+		if (year != 0 && month != 0 && day != 0) {
+			GDateTime *dt = g_date_time_new_local (year, month, day, 0, 0, 0);
+			long days = (long)(g_date_time_to_unix (dt) / (24 * 60 * 60));
+			g_date_time_unref (dt);
+
+			return days;
+		}
+	}
+
+	return ((long)(time(NULL) / (60 * 60 * 24)));
+}
+
+static void
+run_chage_l (const char *json_data, long *lastdays, int *maxdays)
+{
+	enum json_tokener_error jerr = json_tokener_success;
+	json_object *root_obj = json_tokener_parse_verbose (json_data, &jerr);
+
+	*maxdays = 99999;
+	*lastdays = (long)(time(NULL) / (60 * 60 * 24));
+
+	if (jerr == json_tokener_success) {
+		json_object *dt_obj, *login_obj, *login_obj1, *login_obj2, *login_obj3;
+		dt_obj = JSON_OBJECT_GET (root_obj, "data");
+		login_obj = JSON_OBJECT_GET (dt_obj, "loginInfo");
+		login_obj1 = JSON_OBJECT_GET (login_obj, "pwd_last_day");
+		login_obj2 = JSON_OBJECT_GET (login_obj, "pwd_max_day");
+		login_obj3 = JSON_OBJECT_GET (login_obj, "pwd_temp_yn");
+		if (login_obj3) {
+			const char *value = json_object_get_string (login_obj3);
+			if (value && g_strcmp0 (value, "Y") == 0) {
+				*lastdays = -1;
+				*maxdays = 99999;
+				goto done;
+			}
+		}
+
+		if (login_obj1 && login_obj2) {
+			const char *value = json_object_get_string (login_obj1);
+			*lastdays = strtoday (value);
+			*maxdays = json_object_get_int (login_obj2);
+			goto done;
+		}
+	}
+
+done:
+	json_object_put (root_obj);
 }
 
 static char *
@@ -455,11 +515,11 @@ get_wrapped_passphrase_file (const char *user)
 
 	if (user_entry) {
 		wrapped_pw_filename = g_strdup_printf ("%s/.ecryptfs/%s",
-                                               user_entry->pw_dir,
-                                               ECRYPTFS_DEFAULT_WRAPPED_PASSPHRASE_FILENAME);
+											   user_entry->pw_dir,
+											   ECRYPTFS_DEFAULT_WRAPPED_PASSPHRASE_FILENAME);
 	} else {
 		wrapped_pw_filename = g_strdup_printf ("/home/%s/.ecryptfs/%s", user,
-                                               ECRYPTFS_DEFAULT_WRAPPED_PASSPHRASE_FILENAME);
+											   ECRYPTFS_DEFAULT_WRAPPED_PASSPHRASE_FILENAME);
 	}
 
 	return wrapped_pw_filename;
@@ -556,10 +616,10 @@ _wrap_passphrase (char *file, const char *wrapping_passphrase, char *passphrase)
 	char salt_hex[ECRYPTFS_SALT_SIZE_HEX];
 	char *_wrapping_passphrase = NULL;
 	uid_t uid = 0, oeuid = 0;
-    long ngroups_max = sysconf(_SC_NGROUPS_MAX);
-    gid_t gid = 0, oegid = 0, groups[ngroups_max+1];
-    int ngids = 0;
-    pid_t child_pid, tmp_pid;
+	long ngroups_max = sysconf(_SC_NGROUPS_MAX);
+	gid_t gid = 0, oegid = 0, groups[ngroups_max+1];
+	int ngids = 0;
+	pid_t child_pid, tmp_pid;
 
 	oeuid = geteuid ();
 	oegid = getegid ();
@@ -849,7 +909,7 @@ user_logged_in (const char *username)
 }
 
 static int
-check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *password, gboolean debug_on)
+check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *password)
 {
 	CURL *curl;
 	CURLcode res = CURLE_OK;
@@ -1215,6 +1275,23 @@ out:
 	return ret;
 }
 
+int
+check_passwd_expiry (pam_handle_t *pamh, long lastchg, int maxdays)
+{
+	int daysleft = 9999;
+	long curdays;
+
+	curdays = (long)(time(NULL) / (60 * 60 * 24));
+
+	if (lastchg == 0) {
+		return 0;
+	}
+
+	daysleft = (gint)(lastchg - curdays) + maxdays;
+
+	return daysleft;
+}
+
 PAM_EXTERN int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
@@ -1225,9 +1302,20 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	const char *user, *password;
 
 	/* Initialize i18n */
-	setlocale(LC_ALL, "");
-	bindtextdomain(PACKAGE, LOCALEDIR);
-	textdomain(PACKAGE);
+//	setlocale (LC_ALL, "");
+//	bindtextdomain (PACKAGE, LOCALEDIR);
+//  bind_textdomain_codeset (PACKAGE, "UTF-8");
+//  textdomain (PACKAGE);
+
+	for (i = 0; i < argc; i++) {
+		if (argv[i] != NULL) {
+			if(g_str_equal (argv[i], "two_factor")) {
+				two_factor = TRUE;
+			} else if(g_str_equal (argv[i], "debug_on")) {
+				debug_on = TRUE;
+			}
+		}
+	}
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
@@ -1250,23 +1338,13 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (user_logged_in (user)) {
-		retval = check_auth (pamh, url, user, password, debug_on);
+		retval = check_auth (pamh, url, user, password);
 	} else {
 		retval = login_from_online (pamh, url, user, password, debug_on);
 	}
 
 	if (retval != PAM_SUCCESS) {
 		goto out;
-	}
-
-	for (i = 0; i < argc; i++) {
-		if (argv[i] != NULL) {
-			if(g_str_equal (argv[i], "two_factor")) {
-				two_factor = TRUE;
-			} else if(g_str_equal (argv[i], "debug_on")) {
-				debug_on = TRUE;
-			}
-		}
 	}
 
 	if (two_factor) {
@@ -1316,10 +1394,213 @@ pam_sm_setcred (pam_handle_t * pamh, int flags, int argc, const char **argv)
 	return PAM_SUCCESS;
 }
 
+static int
+rad_converse (pam_handle_t *pamh, int msg_style, char *message, char **password)
+{ 
+	const struct pam_conv *conv;
+	struct pam_message resp_msg;
+	const struct pam_message *msg[1];
+	struct pam_response *resp = NULL;
+	int retval;
+
+	resp_msg.msg_style = msg_style;
+	resp_msg.msg = message;
+	msg[0] = &resp_msg;
+
+	/* grab the password */
+	retval = pam_get_item (pamh, PAM_CONV, (const void **) &conv);
+	if (retval != PAM_SUCCESS) { return retval; }
+
+	retval = conv->conv (1, msg, &resp,conv->appdata_ptr);
+	if (retval != PAM_SUCCESS) { return retval; }
+
+	if (password) { /* assume msg.type needs a response */
+		/* I'm not sure if this next bit is necessary on Linux */
+		*password = resp->resp;
+		free (resp);
+	}
+
+	return PAM_SUCCESS;
+}
+
+static gboolean
+change_ecryptfs_mount_passphrase (const char *user, const char *old_passphrase, const char *new_passphrase)
+{
+	if (!old_passphrase || !new_passphrase)
+		return FALSE;
+
+	gchar *ecryptfs_wrap_pass = g_strdup_printf ("/home/%s/.ecryptfs/wrapped-passphrase", user);
+	if (!g_file_test (ecryptfs_wrap_pass, G_FILE_TEST_EXISTS)) {
+		return FALSE;
+	}
+
+	gboolean ret = FALSE;
+
+	gchar *cmd = g_find_program_in_path ("ecryptfs-rewrap-passphrase");
+	if (cmd) {
+		gchar *cmdline = g_strdup_printf ("%s %s %s %s", cmd, ecryptfs_wrap_pass, old_passphrase, new_passphrase);
+
+		ret = g_spawn_command_line_sync (cmdline, NULL, NULL, NULL, NULL);
+		g_free (cmdline);
+	}
+
+	g_free (cmd);
+	g_free (ecryptfs_wrap_pass);
+
+	return ret;
+}
+
+
+static gboolean
+request_to_change_password (const gchar *user, const char *host, const gchar *token, const gchar *old_passwd, const gchar *new_passwd)
+{
+	CURL *curl;
+	gboolean retval = FALSE;
+	struct MemoryStruct chunk;
+
+	if (!host || !token || !old_passwd || !new_passwd) {
+		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get information for changing password [%s]", __FUNCTION__);
+		return FALSE;
+	}
+
+	chunk.size = 0;
+	chunk.memory = malloc (1);
+
+	curl_global_init (CURL_GLOBAL_ALL);
+
+	/* get a curl handle */
+	curl = curl_easy_init ();
+
+	if (curl) {
+		char *old_pw_hash = create_hash (user, old_passwd, NULL);
+		char *new_pw_hash = create_hash (user, new_passwd, NULL);
+
+		char *url = g_strdup_printf ("https://%s/glm/v1/pam/password", host);
+		char *post_fields = g_strdup_printf ("password=%s&new_password=%s&login_token=%s", old_pw_hash, new_pw_hash, token);
+
+		curl_easy_setopt (curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_SSLCERT, GOOROOM_CERT);
+		curl_easy_setopt(curl, CURLOPT_SSLKEY, GOOROOM_PRIVATE_KEY);
+
+		/* Now specify the POST data */
+		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
+
+		/* set timeout */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
+		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+
+		curl_easy_perform (curl);
+		curl_easy_cleanup (curl);
+
+		g_free (url);
+		g_free (post_fields);
+	} else {
+		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+	}
+
+	curl_global_cleanup ();
+
+	char *data = g_strdup (chunk.memory);
+	if (data) {
+		retval = is_result_ok (data);
+		g_free (data);
+	}
+
+	g_free (chunk.memory);
+
+  return retval;
+}
+
+static gboolean
+change_online_password (pam_handle_t *pamh, const char *user, const char *new_passwd)
+{
+	char *url = NULL;
+	char *token = NULL;
+	const char *old_passwd, *data;
+  gboolean ret = FALSE;
+
+	if (pam_get_item (pamh, PAM_OLDAUTHTOK ,(const void**)&old_passwd) != PAM_SUCCESS)
+		return FALSE;
+
+	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS)
+		return FALSE;
+
+	enum json_tokener_error jerr = json_tokener_success;
+	json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
+	if (jerr == json_tokener_success) {
+		json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
+		obj1 = JSON_OBJECT_GET (root_obj, "data");
+		obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
+		obj3 = JSON_OBJECT_GET (obj2, "login_token");
+		if (obj3) {
+			token = g_strdup (json_object_get_string (obj3));
+		}
+		json_object_put (root_obj);
+	}
+
+	if (!token) {
+		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get login token [%s]", __FUNCTION__);
+		return FALSE;
+	}
+
+	url = parse_url ();
+	if (!url) {
+		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
+		g_free (token);
+		return FALSE;
+	}
+
+	ret = request_to_change_password (user, url, token, old_passwd, new_passwd);
+	if (ret) {
+		if (!change_ecryptfs_mount_passphrase (user, old_passwd, new_passwd)) {
+			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to change passphrase for ecryptfs [%s]", __FUNCTION__);
+		}
+#if 0
+		/*  If the ecryptfs passphrase change fails, restore password */
+		if (ret == FALSE) {
+			gboolean restore = FALSE;
+			int try = 1;
+			while (try++ <= 3) {
+				if (request_to_change_password (user, url, token, new_passwd, old_passwd)) {
+					restore = TRUE;
+					break;
+				}
+			}
+			if (!restore) {
+			}
+		}
+#endif
+  }
+
+	g_free (token);
+	g_free (url);
+
+  return ret;
+}
+
+
+static int
+verify_current_password (pam_handle_t *pamh, const char *user, const char *password)
+{
+	char *url = parse_url ();
+	if (!url) {
+		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
+		return PAM_AUTHTOK_ERR;
+	}
+
+	if (check_auth (pamh, url, user, password) != PAM_SUCCESS) {
+		return PAM_AUTHTOK_ERR;
+	}
+
+	return PAM_SUCCESS;
+}
+
 PAM_EXTERN int
-pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
+pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
 	const char *user;
+	int retval = PAM_AUTHTOK_ERR;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
@@ -1328,7 +1609,148 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	if (!is_online_account (user)) {
 		syslog (LOG_WARNING, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
-		return PAM_IGNORE;
+		return PAM_USER_UNKNOWN;
+	}
+
+	if (flags & PAM_PRELIM_CHECK) {
+		char *password = NULL;
+		retval = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, "Enter current password", &password);
+		if (retval != PAM_SUCCESS) {
+			g_free (password);
+			return retval;
+		}
+
+		retval = verify_current_password (pamh, user, password);
+		if (retval != PAM_SUCCESS) {
+			g_free (password);
+			return retval;
+		}
+
+		pam_set_item (pamh, PAM_OLDAUTHTOK, password);
+		g_free (password);
+	} else if (flags & PAM_UPDATE_AUTHTOK) {
+		int attempts = 0;
+		char *new_password = NULL;
+		char *chk_password = NULL;
+
+		/* loop, trying to get matching new passwords */
+		while (attempts++ < 3) {
+			retval = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, "Enter new password", &new_password);
+			if (retval != PAM_SUCCESS) {
+				goto error;
+			}
+
+			retval =  rad_converse (pamh, PAM_PROMPT_ECHO_OFF, "Retype new password", &chk_password);
+			if (retval != PAM_SUCCESS) {
+				goto error;
+			}
+
+			/* if they don't match, don't pass them to the next module */
+			if (g_strcmp0 (new_password, chk_password) != 0) {
+				send_info_msg (pamh, _("Passwords do not match."));
+				PAM_FORGET (new_password);
+				PAM_FORGET (chk_password);
+				continue;
+			}
+
+			if (strlen (new_password) < 6) {
+				send_info_msg (pamh, _("It's WAY too short."));
+				PAM_FORGET (new_password);
+				PAM_FORGET (chk_password);
+				continue;
+			}
+
+			break;
+		}
+
+		if (attempts >= 3) { /* too many new password attempts: die */
+			retval = PAM_AUTHTOK_ERR;
+		} else {
+			if (change_online_password (pamh, user, new_password)) {
+				pam_set_item (pamh, PAM_AUTHTOK, new_password);
+				retval = PAM_SUCCESS;
+			} else {
+				retval = PAM_AUTHTOK_ERR;
+			}
+		}
+error:
+		PAM_FORGET (new_password);
+		PAM_FORGET (chk_password);
+	}
+
+	return retval;
+}
+
+PAM_EXTERN int
+pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
+{
+	const char *user, *data;
+
+	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
+		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
+		return PAM_SERVICE_ERR;
+	}
+
+	if (!is_online_account (user)) {
+		syslog (LOG_WARNING, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
+		return PAM_USER_UNKNOWN;
+	}
+
+	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS) {
+		data = NULL;
+	}
+
+	if (!data) {
+		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
+		return PAM_USER_UNKNOWN;
+	}
+
+	long lastchg;
+	int daysleft, maxdays, warndays = 7;
+
+	run_chage_l (data, &lastchg, &maxdays);
+
+	if (lastchg == -1) {
+		syslog (LOG_NOTICE, "pam_grm_auth : Temporarily issued password for %s", user);
+		pam_prompt (pamh, PAM_ERROR_MSG, NULL, "Temporary Password");
+		return PAM_NEW_AUTHTOK_REQD;
+	}
+
+	if (lastchg == 0) {
+		syslog (LOG_NOTICE, "pam_grm_auth : expired password for user %s", user);
+		pam_prompt (pamh, PAM_ERROR_MSG, NULL, "You are required to change your password immediately");
+		return PAM_NEW_AUTHTOK_REQD;
+	}
+
+	daysleft = check_passwd_expiry (pamh, lastchg, maxdays);
+
+	if (daysleft <= 0) {
+		syslog (LOG_NOTICE, "pam_grm_auth : expired password for user %s", user);
+		pam_prompt (pamh, PAM_ERROR_MSG, NULL, "You are required to change your password immediately");
+		return PAM_NEW_AUTHTOK_REQD;
+	}
+
+	if (daysleft >= 1 && daysleft <= warndays) {
+		gchar *msg = NULL;
+		if (daysleft == 1) {
+			syslog (LOG_NOTICE, "pam_grm_auth : password for user %s will expire in %d day", user, daysleft);
+		} else {
+			syslog (LOG_NOTICE, "pam_grm_auth : password for user %s will expire in %d days", user, daysleft);
+		}
+		msg = g_strdup_printf ("Until Password Expiration:%d", daysleft);
+
+		char *res = NULL;
+		int retval = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, &res);
+		g_free (msg);
+
+		if (retval != PAM_SUCCESS || g_strcmp0 (res, "chpasswd_yes") != 0) {
+			g_free (res);
+			return PAM_SUCCESS;
+		}
+
+		g_free (res);
+
+		return PAM_NEW_AUTHTOK_REQD;
 	}
 
 	return PAM_SUCCESS;
