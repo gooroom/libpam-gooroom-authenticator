@@ -1,3 +1,13 @@
+libpam-gooroom-authenticator (0.2.1+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [13e6e17f] Added url encoding function when sending password for type 2.
+  * [3702453d] Added a implementation for changing password
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Thu, 11 Oct 2018 11:26:10 +0900
+
 libpam-gooroom-authenticator (0.1.3+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
