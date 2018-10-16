@@ -59,7 +59,7 @@
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 #define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
-#define DEFAULT_TIMEOUT                 3
+#define DEFAULT_TIMEOUT                 10
 
 #define PAM_FORGET(X) if (X) {memset(X, 0, strlen(X));free(X);X = NULL;}
 
@@ -67,6 +67,45 @@ struct MemoryStruct {
 	char *memory;
 	size_t size;
 };
+
+
+
+
+static RSA *
+createRSA (unsigned char *key, int public)
+{
+	RSA *rsa = NULL;
+	BIO *keybio = NULL;
+
+	keybio = BIO_new_mem_buf (key, -1);
+	if (!keybio) {
+		return NULL;
+	}
+
+	if(public == 1) {
+		rsa = PEM_read_bio_RSA_PUBKEY (keybio, &rsa, NULL, NULL);
+	} else {
+		rsa = PEM_read_bio_RSAPrivateKey (keybio, &rsa, NULL, NULL);
+	}
+
+	return rsa;
+}
+
+static int
+encrypt_with_public_key (unsigned char *data, int data_len, unsigned char *key, unsigned char *encrypted)
+{
+	RSA *rsa = createRSA (key, 1);
+
+	return RSA_public_encrypt (data_len, data, encrypted, rsa, RSA_PKCS1_PADDING);
+}
+
+static int
+decrypt_with_private_key (unsigned char *enc_data, int data_len, unsigned char *key, unsigned char *decrypted)
+{
+	RSA *rsa = createRSA (key, 0);
+
+	return RSA_private_decrypt (data_len, enc_data, decrypted, rsa, RSA_PKCS1_PADDING);
+}
 
 static gboolean
 send_info_msg (pam_handle_t *pamh, const char *msg)
@@ -102,6 +141,84 @@ JSON_OBJECT_GET (json_object *root_obj, const char *key)
 	return ret_obj;
 }
 
+char *
+get_login_token (const char *data)
+{
+	g_return_val_if_fail (data != NULL, NULL);
+
+	gchar *token = NULL;
+
+	enum json_tokener_error jerr = json_tokener_success;
+	json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
+	if (jerr == json_tokener_success) {
+		json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
+		obj1 = JSON_OBJECT_GET (root_obj, "data");
+		obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
+		obj3 = JSON_OBJECT_GET (obj2, "login_token");
+		if (obj3) {
+			token = g_strdup (json_object_get_string (obj3));
+		}
+		json_object_put (root_obj);
+	}
+
+	return token;
+}
+
+static int
+get_passphrase_from_online (const char *data, unsigned char *passphrase)
+{
+	if (!data) {
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
+		return -1;
+	}
+
+	int ret = -1;
+	char *base64_encoded_passphrase = NULL;
+
+	enum json_tokener_error jerr = json_tokener_success;
+	json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
+
+	if (jerr == json_tokener_success) {
+		json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
+		obj1 = JSON_OBJECT_GET (root_obj, "data");
+		obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
+		obj3 = JSON_OBJECT_GET (obj2, "passphrase");
+		if (obj3) {
+			base64_encoded_passphrase = g_uri_unescape_string (json_object_get_string (obj3), NULL);
+		}
+		json_object_put (root_obj);
+	}
+
+	if (!base64_encoded_passphrase || strlen (base64_encoded_passphrase) == 0) {
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get passphrase from user_data [%s]", __FUNCTION__);
+		ret = 1;
+	} else {
+		char *private_key = NULL;
+		g_file_get_contents (GOOROOM_PRIVATE_KEY, &private_key, NULL, NULL);
+		if (private_key) {
+			unsigned long outlen = 0;
+			unsigned char *encrypted_passphrase = g_base64_decode (base64_encoded_passphrase, &outlen);
+			if (encrypted_passphrase && outlen > 0) {
+				int decrypted_length = decrypt_with_private_key (encrypted_passphrase, 256, (unsigned char *)private_key, passphrase);
+				if (decrypted_length != -1) {
+					ret = 0;
+				} else {
+					syslog (LOG_ERR, "pam_grm_auth: Error attempting to decrypt passphrase with private key [%s]", __FUNCTION__);
+				}
+			} else {
+				syslog (LOG_ERR, "pam_grm_auth: Base64 decoding error [%s]", __FUNCTION__);
+			}
+			g_free (encrypted_passphrase);
+		} else {
+			syslog (LOG_ERR, "pam_grm_auth: Error attempting to get private key [%s]", __FUNCTION__);
+		}
+		g_free (private_key);
+	}
+
+	g_free (base64_encoded_passphrase);
+
+	return ret;
+}
 
 static char *
 create_hash (const char *user, const char *password, gpointer data)
@@ -191,7 +308,7 @@ make_sure_to_create_save_dir (const char *user)
 			g_mkdir (gooroom_save_dir, 0700);
 
 			if (chown (gooroom_save_dir, user_entry->pw_uid, user_entry->pw_gid) == -1) {
-				syslog (LOG_WARNING, "pam_grm_auth: Error chown [%s]", __FUNCTION__);
+				syslog (LOG_ERR, "pam_grm_auth: Error chown [%s]", __FUNCTION__);
 			}
 		}
 		g_free (gooroom_save_dir);
@@ -271,12 +388,12 @@ is_mount_possible (const char *url)
 		curl_easy_setopt (curl, CURLOPT_URL, url);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
 
 		res = curl_easy_perform (curl);
 		curl_easy_cleanup (curl);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
 	}
 
 	curl_global_cleanup ();
@@ -449,7 +566,7 @@ is_result_ok (char *json_data)
 static void
 cleanup_data (pam_handle_t *pamh, void *data, int pam_end_status)
 {
-	free (data);
+	g_free (data);
 }
 
 static gboolean
@@ -536,7 +653,7 @@ get_public_key_from_certificate ()
 		// openssl x509 -in /etc/ssl/certs/gooroom_client.crt -noout -pubkey
 		char *cmd = g_strdup_printf ("%s x509 -in %s -noout -pubkey", openssl, GOOROOM_CERT);
 		if (!g_spawn_command_line_sync (cmd, &output, NULL, NULL, NULL)) {
-			syslog (LOG_WARNING, "pam_grm_auth: Error running command to get public key [%s]", __FUNCTION__);
+			syslog (LOG_ERR, "pam_grm_auth: Error running command to get public key [%s]", __FUNCTION__);
 		}
 		g_free (cmd);
 	}
@@ -551,129 +668,99 @@ get_public_key_from_certificate ()
 	return pubkey;
 }
  
-static RSA *
-createRSA (unsigned char *key, int public)
+
+static void
+setuid_child_setup_func (gpointer data)
 {
-	RSA *rsa = NULL;
-	BIO *keybio = NULL;
+	struct passwd *pw = data;
 
-	keybio = BIO_new_mem_buf (key, -1);
-	if (!keybio) {
-		return NULL;
+	if (pw == NULL || initgroups (pw->pw_name, pw->pw_gid) != 0 ||
+		setgid (pw->pw_gid) != 0 ||
+		setuid (pw->pw_uid) != 0) {
+		exit (1);
 	}
-
-	if(public == 1) {
-		rsa = PEM_read_bio_RSA_PUBKEY (keybio, &rsa, NULL, NULL);
-	} else {
-		rsa = PEM_read_bio_RSAPrivateKey (keybio, &rsa, NULL, NULL);
-	}
-
-	return rsa;
-}
- 
-static int
-encrypt_with_public_key (unsigned char *data, int data_len, unsigned char *key, unsigned char *encrypted)
-{
-	RSA *rsa = createRSA (key, 1);
-
-	return RSA_public_encrypt (data_len, data, encrypted, rsa, RSA_PKCS1_PADDING);
 }
 
 static int
-decrypt_with_private_key (unsigned char *enc_data, int data_len, unsigned char *key, unsigned char *decrypted)
+rewrap_passphrase (const char *user,
+                   const char *file,
+                   const char *old_wrapping_passphrase,
+                   const char *new_wrapping_passphrase)
 {
-	RSA *rsa = createRSA (key, 0);
+	int         status = -1;
+	const char *argv[5];
 
-	return RSA_private_decrypt (data_len, enc_data, decrypted, rsa, RSA_PKCS1_PADDING);
+	argv[0] = ECRYPTFS_REWRAP_PASSPHRASE_HELPER;
+	argv[1] = file;
+	argv[2] = old_wrapping_passphrase;
+	argv[3] = new_wrapping_passphrase;
+	argv[4] = NULL;
+
+	struct passwd *pw = getpwnam (user);
+
+	if (g_spawn_sync (NULL, (gchar **)argv, NULL, 0,
+				(GSpawnChildSetupFunc)setuid_child_setup_func, pw,
+				NULL, NULL, &status, NULL))
+	{
+		g_spawn_check_exit_status (status, NULL);
+	}
+
+	return status;
 }
 
 static int
-_unwrap_passphrase (char *file, const char *wrapping_passphrase, char *passphrase)
+wrap_passphrase (const char *user,
+                 const char *file,
+                 const char *wrapping_passphrase,
+                 char       *passphrase)
 {
-	int rc = 0;
-	char salt[ECRYPTFS_SALT_SIZE];
-	char salt_hex[ECRYPTFS_SALT_SIZE_HEX];
-	char *_wrapping_passphrase = g_strdup (wrapping_passphrase);
+	int         status = -1;
+	const char *argv[5];
 
-	if ((rc = ecryptfs_read_salt_hex_from_rc (salt_hex))) {
-		from_hex (salt, ECRYPTFS_DEFAULT_SALT_HEX, ECRYPTFS_SALT_SIZE);
-	} else {
-		from_hex (salt, salt_hex, ECRYPTFS_SALT_SIZE);
+	argv[0] = ECRYPTFS_WRAP_PASSPHRASE_HELPER;
+	argv[1] = file;
+	argv[2] = passphrase;
+	argv[3] = wrapping_passphrase;
+	argv[4] = NULL;
+
+	struct passwd *pw = getpwnam (user);
+
+	if (g_spawn_sync (NULL, (gchar **)argv, NULL, 0,
+				(GSpawnChildSetupFunc)setuid_child_setup_func, pw,
+				NULL, NULL, &status, NULL))
+	{
+		g_spawn_check_exit_status (status, NULL);
 	}
 
-	rc = ecryptfs_unwrap_passphrase (passphrase, file, _wrapping_passphrase, salt);
-
-	g_free (_wrapping_passphrase);
-
-	return rc /* Returns 0 upon success. Negative upon error */;
+	return status;
 }
 
 static int
-_wrap_passphrase (char *file, const char *wrapping_passphrase, char *passphrase)
+wrap_passphrase_file (const char *user,
+                      const char *wrapped_pw_filename,
+                      const char *passphrase,
+                      const char *unwrapped_pw_filename)
 {
-	int rc = -1;
-	char salt[ECRYPTFS_SALT_SIZE];
-	char salt_hex[ECRYPTFS_SALT_SIZE_HEX];
-	char *_wrapping_passphrase = NULL;
-	uid_t uid = 0, oeuid = 0;
-	long ngroups_max = sysconf(_SC_NGROUPS_MAX);
-	gid_t gid = 0, oegid = 0, groups[ngroups_max+1];
-	int ngids = 0;
-	pid_t child_pid, tmp_pid;
+	int         status = -1;
+	const char *argv[5];
 
-	oeuid = geteuid ();
-	oegid = getegid ();
-	if ((ngids = getgroups (sizeof(groups) / sizeof(gid_t), groups)) < 0) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error geteuid [%s]", __FUNCTION__);
-		goto outnouid;
+	argv[0] = ECRYPTFS_WRAP_PASSPHRASE_FILE_HELPER;
+	argv[1] = wrapped_pw_filename;
+	argv[2] = passphrase;
+	argv[3] = unwrapped_pw_filename;
+	argv[4] = NULL;
+
+	struct passwd *pw = getpwnam (user);
+
+	if (g_spawn_sync (NULL, (gchar **)argv, NULL, 0,
+                      (GSpawnChildSetupFunc)setuid_child_setup_func, pw,
+                      NULL, NULL, &status, NULL))
+	{
+		g_spawn_check_exit_status (status, NULL);
 	}
 
-	if (setegid (gid) < 0 || setgroups (1, &gid) < 0 || seteuid (uid) < 0) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error seteuid [%s]", __FUNCTION__);
-		goto out;
-	}
-
-	_wrapping_passphrase = g_strdup (wrapping_passphrase);
-
-	rc = 0;
-	if ((child_pid = fork()) == 0) {
-		/* temp regain uid 0 to drop privs */
-		seteuid (oeuid);
-
-		/* setgroups() already called */
-		if (setgid (gid) < 0 || setuid (uid) < 0)
-			goto out_child;
-
-		if (ecryptfs_read_salt_hex_from_rc (salt_hex)) {
-			from_hex (salt, ECRYPTFS_DEFAULT_SALT_HEX, ECRYPTFS_SALT_SIZE);
-		} else {
-			from_hex (salt, salt_hex, ECRYPTFS_SALT_SIZE);
-		}
-
-		if (ecryptfs_wrap_passphrase (file, _wrapping_passphrase, salt, passphrase)) {
-			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to wrap passphrase for ecryptfs [%s]", __FUNCTION__);
-			goto out_child;
-		}
-
-out_child:
-		exit(0);
-	}
-
-	if ((tmp_pid = waitpid (child_pid, NULL, 0)) == -1) {
-		syslog (LOG_WARNING, "pam_grm_auth: waitpid() returned with error condition [%s]", __FUNCTION__);
-	}
-
-	g_free (_wrapping_passphrase);
-
-out:
-	seteuid (oeuid);
-	setegid (oegid);
-	setgroups (ngids, groups);
-
-outnouid:
-	return rc /* Returns 0 upon success. Negative upon error */;
+	return status;
 }
-
 
 static gboolean
 send_passphrase_to_online (const char *host, const char *token, char *base64_encoded_passphrase)
@@ -707,7 +794,7 @@ send_passphrase_to_online (const char *host, const char *token, char *base64_enc
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -718,7 +805,7 @@ send_passphrase_to_online (const char *host, const char *token, char *base64_enc
 		g_free (post_fields);
 		g_free (escaped_passphrase);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
 	}
 
 	curl_global_cleanup ();
@@ -734,63 +821,59 @@ send_passphrase_to_online (const char *host, const char *token, char *base64_enc
 	return retval;
 }
 
-static void
-save_passphrase_for_ecryptfs (pam_handle_t *pamh, const char *user, const char *login_token)
+static gboolean
+save_passphrase_for_ecryptfs (pam_handle_t *pamh, char *passphrase)
 {
-	int rc = 0;
+	gboolean ret = FALSE;
+	char *public_key = NULL;
 	int encrypted_passphrase_len = -1;
-	char *wrapped_passphrase_file = NULL;
 	unsigned char encrypted_passphrase[4098] = {0,};
-	char passphrase[ECRYPTFS_MAX_PASSWORD_LENGTH + 1] = {0,};
 
-	/* 1. Getting passphrase from current wrapping_passphrase (wrapping_passphrase == password) */
-	wrapped_passphrase_file = get_wrapped_passphrase_file (user);
-	if (wrapped_passphrase_file && g_file_test (wrapped_passphrase_file, G_FILE_TEST_EXISTS)) {
-		const char *password;
-		/* Get the stored authtok here */
-		if (pam_get_data (pamh, "grm_system_authtok", (const void**)&password) != PAM_SUCCESS) {
-			password = NULL;
-		}
-
-		if (password) {
-			rc = _unwrap_passphrase (wrapped_passphrase_file, password, passphrase);
-		} else {
-			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get password [%s]", __FUNCTION__);
-		}
+	/* 1. Encrypting passphrase with public key */
+	public_key = get_public_key_from_certificate ();
+	if (!public_key) {
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get public key from certificate [%s]", __FUNCTION__);
+		return FALSE;
 	}
 
-	/* 2. Encrypting passphrase with public key */
-	if (rc == 0) {
-		char *public_key = NULL;
-		public_key = get_public_key_from_certificate ();
-		if (public_key) {
-			encrypted_passphrase_len = encrypt_with_public_key ((unsigned char *)passphrase, strlen (passphrase), (unsigned char *)public_key, encrypted_passphrase);
-		}
-		g_free (public_key);
-	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to unwrap passphrase for ecryptfs [%s]", __FUNCTION__);
-	}
+	encrypted_passphrase_len = encrypt_with_public_key ((unsigned char *)passphrase, strlen (passphrase), (unsigned char *)public_key, encrypted_passphrase);
 
-	/* 3. Sending encrypted passphrase to online */
+	g_free (public_key);
+
+	/* 2. Sending encrypted passphrase to online */
 	if (encrypted_passphrase_len != -1) {
 		char *base64_encoded_passphrase = g_base64_encode (encrypted_passphrase, encrypted_passphrase_len);
 		if (base64_encoded_passphrase) {
 			char *url = parse_url ();
 			if (url) {
-				send_passphrase_to_online (url, login_token, base64_encoded_passphrase);
+				const char *data;
+				if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS)
+					data = NULL;
+
+				char *login_token = get_login_token (data);
+				if (login_token) {
+					if (send_passphrase_to_online (url, login_token, base64_encoded_passphrase)) {
+						ret = TRUE;
+					} else {
+						syslog (LOG_ERR, "pam_grm_auth: Error attempting to send passphrase to online [%s]", __FUNCTION__);
+					}
+				} else {
+					syslog (LOG_ERR, "pam_grm_auth: Error attempting to get login token [%s]", __FUNCTION__);
+				}
+				g_free (login_token);
 			} else {
-				syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
+				syslog (LOG_ERR, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
 			}
 			g_free (url);
 		} else {
-			syslog (LOG_WARNING, "pam_grm_auth: Base64 encoding error [%s]", __FUNCTION__);
+			syslog (LOG_ERR, "pam_grm_auth: Base64 encoding error [%s]", __FUNCTION__);
 		}
 		g_free (base64_encoded_passphrase);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to encrypt passphrase with public key [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to encrypt passphrase with public key [%s]", __FUNCTION__);
 	}
 
-	g_free (wrapped_passphrase_file);
+	return ret;
 }
 
 static char *
@@ -823,7 +906,7 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -835,13 +918,13 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 		g_free (url);
 		g_free (post_fields);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
 	}
 
 	curl_global_cleanup ();
 
 	if (res != CURLE_OK) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to request authentication for NFC [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to request authentication for NFC [%s]", __FUNCTION__);
 		goto done;
 	}
 
@@ -939,7 +1022,7 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -951,13 +1034,13 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 		g_free (url);
 		g_free (post_fields);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
 	}
 
 	curl_global_cleanup ();
 
 	if (res != CURLE_OK) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to request authentication [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to request authentication [%s]", __FUNCTION__);
 		retval = PAM_AUTH_ERR;
 		goto done;
 	}
@@ -1009,7 +1092,7 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -1021,7 +1104,7 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		g_free (url);
 		g_free (post_fields);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
 	}
 
 	curl_global_cleanup ();
@@ -1029,13 +1112,13 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 	if (res != CURLE_OK) {
 		retval = PAM_AUTH_ERR;
 		if (res == CURLE_COULDNT_CONNECT) {
-			syslog (LOG_WARNING, "pam_grm_auth: Failed to connect to host or proxy [%s]", __FUNCTION__);
+			syslog (LOG_ERR, "pam_grm_auth: Failed to connect to host or proxy [%s]", __FUNCTION__);
 			send_info_msg (pamh, _("Failed to connect to server"));
 		} else if (res == CURLE_OPERATION_TIMEDOUT) {
-			syslog (LOG_WARNING, "pam_grm_auth: Operation timeout [%s]", __FUNCTION__);
+			syslog (LOG_ERR, "pam_grm_auth: Operation timeout [%s]", __FUNCTION__);
 			send_info_msg (pamh, _("Operation timeout"));
 		} else {
-			syslog (LOG_WARNING, "pam_grm_auth: Connection error [%s]", __FUNCTION__);
+			syslog (LOG_ERR, "pam_grm_auth: Connection error [%s]", __FUNCTION__);
 			send_info_msg (pamh, _("Connection error"));
 		}
 		goto done;
@@ -1102,7 +1185,7 @@ logout_from_online (const char *host, const char *token)
 	struct MemoryStruct chunk;
 
 	if (!token || !host) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get url or login token [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get url or login token [%s]", __FUNCTION__);
 		return PAM_IGNORE;
 	}
 
@@ -1126,7 +1209,7 @@ logout_from_online (const char *host, const char *token)
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -1136,7 +1219,7 @@ logout_from_online (const char *host, const char *token)
 		g_free (url);
 		g_free (post_fields);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
 	}
 
 	curl_global_cleanup ();
@@ -1182,11 +1265,11 @@ send_request_to_agent (pam_handle_t *pamh, const char *request, const char *user
 		if (variant) {
 			g_variant_unref (variant);
 		} else {
-			syslog (LOG_WARNING, "pam_grm_auth: [%s : %s]", __FUNCTION__, error->message);
+			syslog (LOG_ERR, "pam_grm_auth: [%s : %s]", __FUNCTION__, error->message);
 			g_error_free (error);
 		}
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating proxy [%s : %s]", __FUNCTION__, error->message);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating proxy [%s : %s]", __FUNCTION__, error->message);
 		g_error_free (error);
 	}
 }
@@ -1194,83 +1277,54 @@ send_request_to_agent (pam_handle_t *pamh, const char *request, const char *user
 static gboolean
 rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, const char *new_password)
 {
-	const char *data;
-	char *base64_encoded_passphrase = NULL;
+	gboolean ret = FALSE;
+	char *unwrapped_pw_filename = NULL;
 	char *wrapped_passphrase_file = NULL;
-	gboolean ret = TRUE;
-	gboolean wrapped_passphrase_file_exist = FALSE;
-	
-	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS) {
-		data = NULL;
-	}
-
-	if (data) {
-		enum json_tokener_error jerr = json_tokener_success;
-		json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
-
-		if (jerr == json_tokener_success) {
-			json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
-			obj1 = JSON_OBJECT_GET (root_obj, "data");
-			obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
-			obj3 = JSON_OBJECT_GET (obj2, "passphrase");
-			if (obj3) {
-				base64_encoded_passphrase = g_uri_unescape_string (json_object_get_string (obj3), NULL);
-			}
-			json_object_put (root_obj);
-		}
-	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
-		return FALSE;
-	}
 
 	wrapped_passphrase_file = get_wrapped_passphrase_file (user);
-	if (wrapped_passphrase_file && g_file_test (wrapped_passphrase_file, G_FILE_TEST_EXISTS)) {
-		wrapped_passphrase_file_exist = TRUE;
+	unwrapped_pw_filename = g_strdup_printf ("/dev/shm/.ecryptfs-%s", user);
+
+	if (g_file_test (unwrapped_pw_filename, G_FILE_TEST_EXISTS)) {
+		gchar *passphrase = NULL;
+		g_file_get_contents (unwrapped_pw_filename, &passphrase, NULL, NULL);
+
+		if (passphrase) {
+			if (save_passphrase_for_ecryptfs (pamh, passphrase)) {
+				if (wrap_passphrase_file (user, wrapped_passphrase_file, new_password, unwrapped_pw_filename) == 0) {
+					ret = TRUE;
+				} else {
+					syslog (LOG_ERR, "pam_grm_auth: Error wrapping cleartext password [%s]", __FUNCTION__);
+				}
+			} else {
+				syslog (LOG_ERR, "pam_grm_auth: Error attempting to save passphrase [%s]", __FUNCTION__);
+			}
+		} else {
+			syslog (LOG_ERR, "pam_grm_auth: Error attempting to get random passphrase [%s]", __FUNCTION__);
+		}
+
+		g_free (passphrase);
+		goto out;
 	}
 
-	// we have to rewrap passphrase with new password
-	if (base64_encoded_passphrase && (g_strcmp0 (base64_encoded_passphrase, "") != 0) && wrapped_passphrase_file_exist) {
-		char *private_key = NULL;
-		int decrypted_length = -1;
-		unsigned char *encrypted_passphrase = NULL;
-		unsigned char decrypted_passphrase[4098] = {0,};
+	const char *data;
+	unsigned char passphrase[4098] = {0,};
 
-		if (!g_file_get_contents (GOOROOM_PRIVATE_KEY, &private_key, NULL, NULL)) {
-			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get private key [%s]", __FUNCTION__);
-			ret = FALSE;
-			goto out;
-		}
+	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS)
+		data = NULL;
 
-		if (!private_key) {
-			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get private key [%s]", __FUNCTION__);
-			ret = FALSE;
-			goto out;
-		}
-
-		unsigned long out_len = 0;
-		encrypted_passphrase = g_base64_decode (base64_encoded_passphrase, &out_len);
-		if (!encrypted_passphrase) {
-			syslog (LOG_WARNING, "pam_grm_auth: Base64 decoding error [%s]", __FUNCTION__);
-			ret = FALSE;
-			goto out;
-		}
-
-		decrypted_length = decrypt_with_private_key (encrypted_passphrase, 256, (unsigned char *)private_key, decrypted_passphrase);
-		if (decrypted_length == -1) {
-			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to decrypt passphrase with private key [%s]", __FUNCTION__);
-			ret = FALSE;
-		} else {
-			if (_wrap_passphrase (wrapped_passphrase_file, new_password, (char *)decrypted_passphrase) != 0) {
-				ret = FALSE;
-			}
-			change_mode_and_owner (user, wrapped_passphrase_file);
-		}
-		g_free (private_key);
+	// get existing passphrase from online
+	int result = get_passphrase_from_online (data, passphrase);
+	if (result == 0) {
+		// Rewrap passphrase with new password
+		if (wrap_passphrase (user, wrapped_passphrase_file, new_password, (char *)passphrase) == 0)
+			ret = TRUE;
+	} else if (result == 1) {
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get base64 encoded passphrase from online [%s]", __FUNCTION__);
 	}
 
 out:
-	g_free (base64_encoded_passphrase);
 	g_free (wrapped_passphrase_file);
+	g_free (unwrapped_pw_filename);
 
 	return ret;
 }
@@ -1323,19 +1377,18 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (!is_online_account (user)) {
-		syslog (LOG_WARNING, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
+		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
 		return PAM_IGNORE;
 	}
 
 	url = parse_url ();
 	if (!url) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
 		return PAM_IGNORE;
 	}
 
-	if (pam_get_item (pamh, PAM_AUTHTOK, (const void **)&password) != PAM_SUCCESS) {
+	if (pam_get_item (pamh, PAM_AUTHTOK, (const void **)&password) != PAM_SUCCESS)
 		return PAM_SERVICE_ERR;
-	}
 
 	if (user_logged_in (user)) {
 		retval = check_auth (pamh, url, user, password);
@@ -1343,9 +1396,8 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		retval = login_from_online (pamh, url, user, password, debug_on);
 	}
 
-	if (retval != PAM_SUCCESS) {
+	if (retval != PAM_SUCCESS)
 		goto out;
-	}
 
 	if (two_factor) {
 		retval = PAM_AUTH_ERR;
@@ -1378,8 +1430,6 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 			send_info_msg (pamh, _("Failed to rewrap passphrase for ecryptfs"));
 			retval = PAM_AUTH_ERR;
 		}
-
-		pam_set_data (pamh, "grm_system_authtok", strdup (password), cleanup_data);
 	}
 
 out:
@@ -1424,28 +1474,19 @@ rad_converse (pam_handle_t *pamh, int msg_style, char *message, char **password)
 }
 
 static gboolean
-change_ecryptfs_mount_passphrase (const char *user, const char *old_passphrase, const char *new_passphrase)
+change_passphrase_for_ecryptfs (const char *user, const char *old_passphrase, const char *new_passphrase)
 {
-	if (!old_passphrase || !new_passphrase)
-		return FALSE;
-
-	gchar *ecryptfs_wrap_pass = g_strdup_printf ("/home/%s/.ecryptfs/wrapped-passphrase", user);
-	if (!g_file_test (ecryptfs_wrap_pass, G_FILE_TEST_EXISTS)) {
-		return FALSE;
-	}
-
 	gboolean ret = FALSE;
+	gchar *wrapped_passphrase_file = NULL;
 
-	gchar *cmd = g_find_program_in_path ("ecryptfs-rewrap-passphrase");
-	if (cmd) {
-		gchar *cmdline = g_strdup_printf ("%s %s %s %s", cmd, ecryptfs_wrap_pass, old_passphrase, new_passphrase);
-
-		ret = g_spawn_command_line_sync (cmdline, NULL, NULL, NULL, NULL);
-		g_free (cmdline);
+	wrapped_passphrase_file = get_wrapped_passphrase_file (user);
+	if (g_file_test (wrapped_passphrase_file, G_FILE_TEST_EXISTS)) {
+		if (rewrap_passphrase (user, wrapped_passphrase_file, old_passphrase, new_passphrase) == 0)
+			ret = TRUE;
+	} else {
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get wrapped-passphrase file [%s]", __FUNCTION__);
 	}
-
-	g_free (cmd);
-	g_free (ecryptfs_wrap_pass);
+	g_free (wrapped_passphrase_file);
 
 	return ret;
 }
@@ -1459,7 +1500,7 @@ request_to_change_password (const gchar *user, const char *host, const gchar *to
 	struct MemoryStruct chunk;
 
 	if (!host || !token || !old_passwd || !new_passwd) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get information for changing password [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get information for changing password [%s]", __FUNCTION__);
 		return FALSE;
 	}
 
@@ -1486,7 +1527,7 @@ request_to_change_password (const gchar *user, const char *host, const gchar *to
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 3 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -1496,7 +1537,7 @@ request_to_change_password (const gchar *user, const char *host, const gchar *to
 		g_free (url);
 		g_free (post_fields);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error creating curl [%s]", __FUNCTION__);
 	}
 
 	curl_global_cleanup ();
@@ -1518,7 +1559,7 @@ change_online_password (pam_handle_t *pamh, const char *user, const char *new_pa
 	char *url = NULL;
 	char *token = NULL;
 	const char *old_passwd, *data;
-  gboolean ret = FALSE;
+	gboolean ret = FALSE;
 
 	if (pam_get_item (pamh, PAM_OLDAUTHTOK ,(const void**)&old_passwd) != PAM_SUCCESS)
 		return FALSE;
@@ -1526,35 +1567,24 @@ change_online_password (pam_handle_t *pamh, const char *user, const char *new_pa
 	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS)
 		return FALSE;
 
-	enum json_tokener_error jerr = json_tokener_success;
-	json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
-	if (jerr == json_tokener_success) {
-		json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
-		obj1 = JSON_OBJECT_GET (root_obj, "data");
-		obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
-		obj3 = JSON_OBJECT_GET (obj2, "login_token");
-		if (obj3) {
-			token = g_strdup (json_object_get_string (obj3));
-		}
-		json_object_put (root_obj);
-	}
-
+	token = get_login_token (data);
 	if (!token) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get login token [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get login token [%s]", __FUNCTION__);
 		return FALSE;
 	}
 
 	url = parse_url ();
 	if (!url) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
 		g_free (token);
 		return FALSE;
 	}
 
 	ret = request_to_change_password (user, url, token, old_passwd, new_passwd);
 	if (ret) {
-		if (!change_ecryptfs_mount_passphrase (user, old_passwd, new_passwd)) {
-			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to change passphrase for ecryptfs [%s]", __FUNCTION__);
+		if (!change_passphrase_for_ecryptfs (user, old_passwd, new_passwd)) {
+			syslog (LOG_ERR, "pam_grm_auth: Error attempting to change passphrase for ecryptfs [%s]", __FUNCTION__);
+			ret = FALSE;
 		}
 #if 0
 		/*  If the ecryptfs passphrase change fails, restore password */
@@ -1571,21 +1601,20 @@ change_online_password (pam_handle_t *pamh, const char *user, const char *new_pa
 			}
 		}
 #endif
-  }
+	}
 
 	g_free (token);
 	g_free (url);
 
-  return ret;
+	return ret;
 }
-
 
 static int
 verify_current_password (pam_handle_t *pamh, const char *user, const char *password)
 {
 	char *url = parse_url ();
 	if (!url) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
 		return PAM_AUTHTOK_ERR;
 	}
 
@@ -1608,7 +1637,7 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (!is_online_account (user)) {
-		syslog (LOG_WARNING, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
+		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
 		return PAM_USER_UNKNOWN;
 	}
 
@@ -1692,7 +1721,7 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (!is_online_account (user)) {
-		syslog (LOG_WARNING, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
+		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
 		return PAM_USER_UNKNOWN;
 	}
 
@@ -1701,7 +1730,7 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (!data) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
 		return PAM_USER_UNKNOWN;
 	}
 
@@ -1767,7 +1796,7 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (!is_online_account (user)) {
-		syslog (LOG_WARNING, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
+		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
 		return PAM_IGNORE;
 	}
 
@@ -1776,7 +1805,7 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (!data) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
 		return PAM_IGNORE;
 	}
 
@@ -1796,32 +1825,6 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		g_free (grm_user);
 	}
 
-	if (!user_logged_in (user)) {
-		// get login token
-		char *login_token = NULL;
-
-		enum json_tokener_error jerr = json_tokener_success;
-		json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
-		if (jerr == json_tokener_success) {
-			json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
-			obj1 = JSON_OBJECT_GET (root_obj, "data");
-			obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
-			obj3 = JSON_OBJECT_GET (obj2, "login_token");
-			if (obj3) {
-				login_token = g_strdup (json_object_get_string (obj3));
-			}
-			json_object_put (root_obj);
-		}
-
-		if (login_token) {
-			save_passphrase_for_ecryptfs (pamh, user, login_token);
-		} else {
-			syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get login token [%s]", __FUNCTION__);
-		}
-
-		g_free (login_token);
-	}
-
 	/* request to save resource access rule for GOOROOM system */
 	send_request_to_agent (pamh, "set_authority_config", user);
 
@@ -1835,7 +1838,7 @@ PAM_EXTERN int
 pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
 	int retval;
-	char *url = NULL;
+	char *url = NULL, *token = NULL;
 	const char *user, *data;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
@@ -1844,43 +1847,31 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 	}
 
 	if (!is_online_account (user)) {
-		syslog (LOG_WARNING, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
+		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
 		return PAM_IGNORE;
 	}
 
 	url = parse_url ();
 	if (!url) {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
 		return PAM_IGNORE;
 	}
 
-	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS) {
+	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS)
 		data = NULL;
-	}
 
 	delete_config_files (user);
 
 	retval = PAM_IGNORE;
 
-	if (data) {
-		enum json_tokener_error jerr = json_tokener_success;
-		json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
-
-		if (jerr == json_tokener_success) {
-			json_object *obj1 = NULL, *obj2 = NULL, *obj3= NULL;
-			obj1 = JSON_OBJECT_GET (root_obj, "data");
-			obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
-			obj3 = JSON_OBJECT_GET (obj2, "login_token");
-			if (obj3) {
-				retval = logout_from_online (url, json_object_get_string (obj3));
-			}
-
-			json_object_put (root_obj);
-		}
+	token = get_login_token (data);
+	if (token != NULL) {
+		retval = logout_from_online (url, token);
 	} else {
-		syslog (LOG_WARNING, "pam_grm_auth: Error attempting to get user_data [%s]", __FUNCTION__);
+		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get login token [%s]", __FUNCTION__);
 	}
 
+	g_free (token);
 	g_free (url);
 
 	return retval;
