@@ -59,7 +59,6 @@
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 #define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
-#define DEFAULT_TIMEOUT                 10
 
 #define PAM_FORGET(X) if (X) {memset(X, 0, strlen(X));free(X);X = NULL;}
 
@@ -68,6 +67,7 @@ struct MemoryStruct {
 	size_t size;
 };
 
+static int CONNECTION_TIMEOUT = 30; // Default Timeout: 30sec
 
 
 
@@ -388,7 +388,7 @@ is_mount_possible (const char *url)
 		curl_easy_setopt (curl, CURLOPT_URL, url);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
 
 		res = curl_easy_perform (curl);
 		curl_easy_cleanup (curl);
@@ -794,7 +794,7 @@ send_passphrase_to_online (const char *host, const char *token, char *base64_enc
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -906,7 +906,7 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -1022,7 +1022,7 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -1062,7 +1062,7 @@ done:
 }
 
 static int
-login_from_online (pam_handle_t *pamh, const char *host, const char *user, const char *password, gboolean debug_on)
+login_from_online (pam_handle_t *pamh, const char *host, const char *user, const char *password, gboolean debug)
 {
 	CURL *curl;
 	CURLcode res = CURLE_OK;
@@ -1092,7 +1092,7 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -1130,7 +1130,7 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		goto done;
 	}
 
-	if (debug_on) {
+	if (debug) {
 		FILE *fp = fopen ("/var/tmp/libpam_grm_auth_debug", "a+");
 		fprintf (fp, "=================Received Data Start===================\n");
 		fprintf (fp, "%s\n", data);
@@ -1209,7 +1209,7 @@ logout_from_online (const char *host, const char *token)
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
@@ -1349,9 +1349,8 @@ check_passwd_expiry (pam_handle_t *pamh, long lastchg, int maxdays)
 PAM_EXTERN int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	guint i;
 	int retval;
-	gboolean two_factor = FALSE, debug_on = FALSE;
+	gboolean two_factor = FALSE, debug = FALSE;
 	char *url = NULL;
 	const char *user, *password;
 
@@ -1361,15 +1360,20 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 //  bind_textdomain_codeset (PACKAGE, "UTF-8");
 //  textdomain (PACKAGE);
 
-	for (i = 0; i < argc; i++) {
-		if (argv[i] != NULL) {
-			if(g_str_equal (argv[i], "two_factor")) {
-				two_factor = TRUE;
-			} else if(g_str_equal (argv[i], "debug_on")) {
-				debug_on = TRUE;
+	/* step through arguments */
+	for (; argc-- > 0; ++argv) {
+		if (!strcmp (*argv, "debug") || !strcmp (*argv, "debug_on")) {
+			debug = TRUE;
+		} else if (!strcmp (*argv, "two_factor")) {
+			two_factor = TRUE;
+		} else if (!strncmp (*argv, "connection_timeout=", 19)) {
+			if ((*argv)[19] != '\0') {
+				CONNECTION_TIMEOUT = atoi (19 + *argv);
 			}
 		}
 	}
+
+	CONNECTION_TIMEOUT = (CONNECTION_TIMEOUT < 1) ? 30 : CONNECTION_TIMEOUT;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
@@ -1393,7 +1397,7 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	if (user_logged_in (user)) {
 		retval = check_auth (pamh, url, user, password);
 	} else {
-		retval = login_from_online (pamh, url, user, password, debug_on);
+		retval = login_from_online (pamh, url, user, password, debug);
 	}
 
 	if (retval != PAM_SUCCESS)
@@ -1527,7 +1531,7 @@ request_to_change_password (const gchar *user, const char *host, const gchar *to
 		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
 
 		/* set timeout */
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, DEFAULT_TIMEOUT); /* 10 sec */
+		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
 		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
 
