@@ -604,7 +604,7 @@ add_account (const char *username, const char *realname)
 	char *cmd = NULL;
 
 	if (is_user_exists (username)) {
-		cmd = g_strdup_printf ("/usr/bin/chfn -f %s", realname ? realname : username);
+		cmd = g_strdup_printf ("/usr/bin/chfn -f %s %s", (realname ? realname : username), username);
 	} else {
 		const char *cmd_prefix = "/usr/sbin/adduser --force-badname --shell /bin/bash --disabled-login --encrypt-home --gecos";
 		if (realname) {
