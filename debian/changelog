@@ -1,3 +1,13 @@
+libpam-gooroom-authenticator (0.2.2+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [9965a3ab] Changed structure to enhance error handling
+  * [cdf649b6] Change the timeout for GPMS connection to be configurable in PAM
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Wed, 16 Jan 2019 10:43:08 +0900
+
 libpam-gooroom-authenticator (0.2.1+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
