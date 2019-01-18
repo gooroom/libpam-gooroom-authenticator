@@ -1,3 +1,12 @@
+libpam-gooroom-authenticator (0.2.3+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [faf757b2] Fixed the problem that root name is changed when connecting GPMS.
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Fri, 18 Jan 2019 14:09:52 +0900
+
 libpam-gooroom-authenticator (0.2.2+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
