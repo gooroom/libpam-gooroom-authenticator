@@ -2,4 +2,4 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = src po
 
-EXTRA_DIST = config.rpath
+#EXTRA_DIST = config.rpath

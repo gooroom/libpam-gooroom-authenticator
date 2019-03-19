@@ -48,17 +48,17 @@
 #include <openssl/bio.h>
 
 #include "common.h"
+#include "cleanup.h"
 #include "nfc_auth.h"
 #include "pam_mount_template.h"
 #include "custom-hash-helper.h"
 
 
+#define GRM_USER                        ".grm-user"
 #define GOOROOM_CERT                    "/etc/ssl/certs/gooroom_client.crt"
 #define GOOROOM_PRIVATE_KEY             "/etc/ssl/private/gooroom_client.key"
-#define GRM_USER                        ".grm-user"
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
-#define GOOROOM_ONLINE_ACCOUNT          "gooroom-online-account"
 
 #define PAM_FORGET(X) if (X) {memset(X, 0, strlen(X));free(X);X = NULL;}
 
@@ -274,7 +274,7 @@ is_online_account (const char *user)
 	char **tokens = g_strsplit (user_entry->pw_gecos, ",", -1);
 
 	if (g_strv_length (tokens) > 4 ) {
-		if (tokens[4] && (g_strcmp0 (tokens[4], GOOROOM_ONLINE_ACCOUNT) == 0)) {
+		if (tokens[4] && (g_strcmp0 (tokens[4], GOOROOM_ACCOUNT) == 0)) {
 			ret = TRUE;
 		}
 	}
@@ -608,9 +608,9 @@ add_account (const char *username, const char *realname)
 	} else {
 		const char *cmd_prefix = "/usr/sbin/adduser --force-badname --shell /bin/bash --disabled-login --encrypt-home --gecos";
 		if (realname) {
-			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, realname, GOOROOM_ONLINE_ACCOUNT, username);
+			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, realname, GOOROOM_ACCOUNT, username);
 		} else {
-			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, username, GOOROOM_ONLINE_ACCOUNT, username);
+			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, username, GOOROOM_ACCOUNT, username);
 		}
 	}
 
@@ -1377,22 +1377,22 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
-		return PAM_SERVICE_ERR;
+		return PAM_USER_UNKNOWN;
 	}
 
 	if (!is_online_account (user)) {
 		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
-		return PAM_IGNORE;
+		return PAM_USER_UNKNOWN;
 	}
 
 	url = parse_url ();
 	if (!url) {
 		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get online url [%s]", __FUNCTION__);
-		return PAM_IGNORE;
+		return PAM_AUTH_ERR;
 	}
 
 	if (pam_get_item (pamh, PAM_AUTHTOK, (const void **)&password) != PAM_SUCCESS)
-		return PAM_SERVICE_ERR;
+		return PAM_AUTH_ERR;
 
 	if (user_logged_in (user)) {
 		retval = check_auth (pamh, url, user, password);
@@ -1637,7 +1637,7 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
-		return PAM_SERVICE_ERR;
+		return PAM_USER_UNKNOWN;
 	}
 
 	if (!is_online_account (user)) {
@@ -1721,7 +1721,7 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
-		return PAM_SERVICE_ERR;
+		return PAM_USER_UNKNOWN;
 	}
 
 	if (!is_online_account (user)) {
@@ -1792,16 +1792,31 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN int
 pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
+	int CLEANUP = 0;
 	const char *user, *data;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
-		return PAM_SERVICE_ERR;
+		return PAM_USER_UNKNOWN;
 	}
+
+	/* step through arguments */
+	for (; argc-- > 0; ++argv) {
+		if (!strcmp (*argv, "cleanup")) {
+			CLEANUP++;
+			break;
+		}
+	}
+
+	if (cleanup_function_enabled ())
+		CLEANUP++;
+
+	if (CLEANUP > 0)
+		cleanup_users (user);
 
 	if (!is_online_account (user)) {
 		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
-		return PAM_IGNORE;
+		return PAM_USER_UNKNOWN;
 	}
 
 	if (pam_get_data (pamh, "user_data", (const void**)&data) != PAM_SUCCESS) {
@@ -1841,18 +1856,30 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN int
 pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	int retval;
+	int CLEANUP = 0;
+	int retval = PAM_IGNORE;
 	char *url = NULL, *token = NULL;
 	const char *user, *data;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_grm_auth: Couldn't get user name [%s]", __FUNCTION__);
-		return PAM_SERVICE_ERR;
+		return PAM_USER_UNKNOWN;
 	}
+
+	/* step through arguments */
+	for (; argc-- > 0; ++argv) {
+		if (!strcmp (*argv, "cleanup")) {
+			CLEANUP++;
+			break;
+		}
+	}
+
+	if (cleanup_function_enabled ())
+		CLEANUP++;
 
 	if (!is_online_account (user)) {
 		syslog (LOG_NOTICE, "pam_grm_auth : Not an online account [%s]", __FUNCTION__);
-		return PAM_IGNORE;
+		return PAM_USER_UNKNOWN;
 	}
 
 	url = parse_url ();
@@ -1877,6 +1904,9 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 
 	g_free (token);
 	g_free (url);
+
+	if (CLEANUP > 0)
+		cleanup_users (NULL);
 
 	return retval;
 }

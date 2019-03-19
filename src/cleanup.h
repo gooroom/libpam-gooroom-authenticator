@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Gooroom <gooroom@gooroom.kr>
+ * Copyright (c) 2015 - 2017 gooroom <gooroom@gooroom.kr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -11,32 +11,27 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
  */
 
-
-#ifndef _COMMON_H_
-#define _COMMON_H_
+#ifndef __CLEANUP_H__
+#define __CLEANUP_H__
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <libintl.h>
 
 #include <glib.h>
 
-#include <security/pam_modules.h>
-
-#define _(string) gettext(string)
-
-#define GOOROOM_ACCOUNT		"gooroom-online-account"
-
 G_BEGIN_DECLS
 
-gboolean pam_msg (pam_handle_t *pamh, const char *msg);
+void     cleanup_users            (const char *except_user);
+
+gboolean cleanup_function_enabled (void);
 
 G_END_DECLS
 
-#endif
+#endif /* __CLEANUP_H__ */

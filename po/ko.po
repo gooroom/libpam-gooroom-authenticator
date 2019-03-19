@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-08-30 18:02+0900\n"
+"POT-Creation-Date: 2019-03-19 17:03+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Korean\n"
 "Language: ko\n"
@@ -15,33 +15,33 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:1033
+#: src/pam.c:1116
 msgid "Failed to connect to server"
 msgstr "서버 연결에 실패하였습니다."
 
-#: src/pam.c:1036
+#: src/pam.c:1119
 msgid "Operation timeout"
 msgstr "서버 연결 시간이 초과하였습니다."
 
-#: src/pam.c:1039
+#: src/pam.c:1122
 msgid "Connection error"
 msgstr "서버 연결 에러가 발생하였습니다."
 
-#: src/pam.c:1364
+#: src/pam.c:1420
 msgid "Failure of the Two-Factor Authentication"
 msgstr ""
 "이중 인증에 실패하였습니다.\n"
 "인증을 다시 시도 하시기 바랍니다."
 
-#: src/pam.c:1378
+#: src/pam.c:1434
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "암호화 파일시스템에 연결할 수 없습니다."
 
-#: src/pam.c:1650
+#: src/pam.c:1683
 msgid "Passwords do not match."
 msgstr "암호가 일치하지 않습니다."
 
-#: src/pam.c:1657
+#: src/pam.c:1690
 msgid "It's WAY too short."
 msgstr "암호가 너무 짧습니다."
 
