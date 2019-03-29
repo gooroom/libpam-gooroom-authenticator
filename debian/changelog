@@ -1,3 +1,13 @@
+libpam-gooroom-authenticator (0.2.4+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [81358d45] Added function to delete home directory when user log out
+  * [15b8e2e6] [Bug:377] Fixed a function for checking password expiration
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Fri, 29 Mar 2019 15:01:05 +0900
+
 libpam-gooroom-authenticator (0.2.3+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
