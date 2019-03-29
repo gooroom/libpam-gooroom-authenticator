@@ -59,6 +59,7 @@
 #define GOOROOM_PRIVATE_KEY             "/etc/ssl/private/gooroom_client.key"
 #define PAM_MOUNT_CONF_PATH             "/etc/security/pam_mount.conf.xml"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
+#define DAY_TO_SEC                      (G_TIME_SPAN_DAY / G_TIME_SPAN_SECOND)
 
 #define PAM_FORGET(X) if (X) {memset(X, 0, strlen(X));free(X);X = NULL;}
 
@@ -466,33 +467,38 @@ done:
 }
 
 static long
-strtoday (const char *date /* yyyy-mm-dd */)
+str_to_sec (const char *date /* yyyy-mm-dd */)
 {
+	gint64 sec = 0;
 	int year = 0, month = 0, day = 0;
 
 	if ((date != NULL) && (strlen (date) == 10) &&
-		(sscanf (date, "%d-%d-%d", &year, &month, &day) != 0)) {
+			(sscanf (date, "%d-%d-%d", &year, &month, &day) != 0)) {
 
 		if (year != 0 && month != 0 && day != 0) {
 			GDateTime *dt = g_date_time_new_local (year, month, day, 0, 0, 0);
-			long days = (long)(g_date_time_to_unix (dt) / (24 * 60 * 60));
+			sec = g_date_time_to_unix (dt);
 			g_date_time_unref (dt);
 
-			return days;
+			return sec;
 		}
 	}
 
-	return ((long)(time(NULL) / (60 * 60 * 24)));
+	GDateTime *dt = g_date_time_new_now_local ();
+	sec = g_date_time_to_unix (dt);
+	g_date_time_unref (dt);
+
+	return sec;
 }
 
 static void
-run_chage_l (const char *json_data, long *lastdays, int *maxdays)
+run_chage_l (const char *json_data, gint64 *lastdays, int *maxdays)
 {
 	enum json_tokener_error jerr = json_tokener_success;
 	json_object *root_obj = json_tokener_parse_verbose (json_data, &jerr);
 
 	*maxdays = 99999;
-	*lastdays = (long)(time(NULL) / (60 * 60 * 24));
+	*lastdays = 0;
 
 	if (jerr == json_tokener_success) {
 		json_object *dt_obj, *login_obj, *login_obj1, *login_obj2, *login_obj3;
@@ -512,7 +518,7 @@ run_chage_l (const char *json_data, long *lastdays, int *maxdays)
 
 		if (login_obj1 && login_obj2) {
 			const char *value = json_object_get_string (login_obj1);
-			*lastdays = strtoday (value);
+			*lastdays = str_to_sec (value);
 			*maxdays = json_object_get_int (login_obj2);
 			goto done;
 		}
@@ -1329,21 +1335,22 @@ out:
 	return ret;
 }
 
-int
+static gint64
 check_passwd_expiry (pam_handle_t *pamh, long lastchg, int maxdays)
 {
-	int daysleft = 9999;
-	long curdays;
+	gint64 cursec = 0;
+	gint64 leftsec = 0;
 
-	curdays = (long)(time(NULL) / (60 * 60 * 24));
-
-	if (lastchg == 0) {
+	if (lastchg == 0)
 		return 0;
-	}
 
-	daysleft = (gint)(lastchg - curdays) + maxdays;
+	GDateTime *dt = g_date_time_new_now_local ();
+	cursec = g_date_time_to_unix (dt);
+	g_date_time_unref (dt);
 
-	return daysleft;
+	leftsec = (lastchg - cursec) + (maxdays * DAY_TO_SEC);
+
+	return leftsec;
 }
 
 PAM_EXTERN int
@@ -1738,8 +1745,8 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_USER_UNKNOWN;
 	}
 
-	long lastchg;
-	int daysleft, maxdays, warndays = 7;
+	gint64 lastchg, leftsec;
+	int maxdays, WARNING_DAYS = 7;
 
 	run_chage_l (data, &lastchg, &maxdays);
 
@@ -1755,22 +1762,17 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_NEW_AUTHTOK_REQD;
 	}
 
-	daysleft = check_passwd_expiry (pamh, lastchg, maxdays);
+	leftsec = check_passwd_expiry (pamh, lastchg, maxdays);
 
-	if (daysleft <= 0) {
+	if (leftsec <= 0) {
 		syslog (LOG_NOTICE, "pam_grm_auth : expired password for user %s", user);
 		pam_prompt (pamh, PAM_ERROR_MSG, NULL, "You are required to change your password immediately");
 		return PAM_NEW_AUTHTOK_REQD;
 	}
 
-	if (daysleft >= 1 && daysleft <= warndays) {
+	if (leftsec > 0 && leftsec <= (WARNING_DAYS * DAY_TO_SEC)) {
 		gchar *msg = NULL;
-		if (daysleft == 1) {
-			syslog (LOG_NOTICE, "pam_grm_auth : password for user %s will expire in %d day", user, daysleft);
-		} else {
-			syslog (LOG_NOTICE, "pam_grm_auth : password for user %s will expire in %d days", user, daysleft);
-		}
-		msg = g_strdup_printf ("Until Password Expiration:%d", daysleft);
+		msg = g_strdup_printf ("Until Password Expiration:%d", (int)(leftsec / DAY_TO_SEC) + 1);
 
 		char *res = NULL;
 		int retval = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, &res);
