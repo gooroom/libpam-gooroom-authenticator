@@ -4,13 +4,13 @@ AC_CONFIG_HEADER(config.h)
 AM_MAINTAINER_MODE
 
 AC_CONFIG_MACRO_DIR([m4])
-AM_INIT_AUTOMAKE([no-dist-gzip dist-xz foreign])
+AM_INIT_AUTOMAKE([foreign])
 
 AM_GNU_GETTEXT([external])
 
 ALL_LINGUAS="en_US ko"
 
-AC_PREREQ([2.59])
+AC_PREREQ([2.63])
 AC_PROG_CC
 AC_PROG_CC_STDC
 AM_PROG_CC_C_O

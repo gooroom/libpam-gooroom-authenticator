@@ -4,6 +4,8 @@ Priority: optional
 Maintainer: Gooroom Maintainers <gooroom@gooroom.kr> 
 Build-Depends: debhelper (>= 9),
                dh-autoreconf,
+               intltool,
+               autotools-dev,
                pkg-config,
                libpam0g-dev | libpam-dev,
                libglib2.0-dev,

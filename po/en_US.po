@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pam-gooroom 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-05-29 14:24+0900\n"
+"POT-Creation-Date: 2019-05-29 16:09+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: English\n"
 "Language: en_US\n"
@@ -34,18 +34,6 @@ msgstr "Failure of the Two-Factor Authentication"
 #: src/pam.c:1969
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "Failed to rewrap passphrase for ecryptfs"
-
-#: src/pam.c:2173
-msgid "Enter current password:"
-msgstr ""
-
-#: src/pam.c:2204
-msgid "Enter new password:"
-msgstr ""
-
-#: src/pam.c:2209
-msgid "Retype new password:"
-msgstr ""
 
 #: src/pam.c:2216
 msgid "Passwords do not match."
@@ -94,6 +82,3 @@ msgstr "Unresponsive card."
 #: src/nfc_auth.c:376
 msgid "Input Timeout."
 msgstr "Input Timeout."
-
-#~ msgid "It's WAY too short."
-#~ msgstr "It's WAY too short."

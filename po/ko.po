@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pam-gooroom 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-05-29 14:24+0900\n"
+"POT-Creation-Date: 2019-05-29 16:09+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Korean\n"
 "Language: ko\n"
@@ -36,18 +36,6 @@ msgstr ""
 #: src/pam.c:1969
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "암호화 파일시스템에 연결할 수 없습니다."
-
-#: src/pam.c:2173
-msgid "Enter current password:"
-msgstr ""
-
-#: src/pam.c:2204
-msgid "Enter new password:"
-msgstr ""
-
-#: src/pam.c:2209
-msgid "Retype new password:"
-msgstr ""
 
 #: src/pam.c:2216
 msgid "Passwords do not match."
@@ -98,6 +86,3 @@ msgid "Input Timeout."
 msgstr ""
 "입력 시간이 초과 되었습니다.\n"
 "인증을 다시 시도 하시기 바랍니다."
-
-#~ msgid "It's WAY too short."
-#~ msgstr "암호가 너무 짧습니다."

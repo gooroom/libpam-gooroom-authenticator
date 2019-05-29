@@ -1,8 +1,8 @@
 #!/bin/sh
 
 #gettextize --force
-aclocal -I aclocal
+aclocal -I m4
 libtoolize --force --copy
 autoheader
-automake --add-missing --foreign
+automake --add-missing
 autoconf
