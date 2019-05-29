@@ -59,7 +59,7 @@ delete_file_recursively (GFile *file)
 		success = g_file_delete (file, NULL, &error);
 		if (success || !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_NOT_EMPTY)) {
 			if (!success) {
-				syslog (LOG_ERR, "pam_grm_auth: Error attempting to delete ecryptfs directory: [%s]", error->message);
+				syslog (LOG_ERR, "pam_gooroom: Error attempting to delete ecryptfs directory: [%s]", error->message);
 			}
 			break;
 		}
@@ -67,9 +67,9 @@ delete_file_recursively (GFile *file)
 		g_clear_error (&error);
 
 		enumerator = g_file_enumerate_children (file,
-                                                G_FILE_ATTRIBUTE_STANDARD_NAME,
-                                                G_FILE_QUERY_INFO_NONE,
-                                                NULL, &error);
+				G_FILE_ATTRIBUTE_STANDARD_NAME,
+				G_FILE_QUERY_INFO_NONE,
+				NULL, &error);
 
 		if (enumerator) {
 			GFileInfo *info;
@@ -96,12 +96,10 @@ delete_file_recursively (GFile *file)
 
 		if (error != NULL)
 			success = FALSE;
-	}
-	while (success);
+	} while (success);
 
 	return success;
 }
-
 
 static GList *
 get_all_mount_dirs (void)
@@ -117,12 +115,13 @@ get_all_mount_dirs (void)
 			char **columns = g_strsplit (lines[i], " ", -1);
 			if (g_strv_length (columns) >= 3) {
 				dirs = g_list_append (dirs, g_strdup (columns[1]));
+				syslog (LOG_INFO, "pam_gooroom: Current Mount Dir: [%s]", columns[1]);
 			}
 			g_strfreev (columns);
 		}
 		g_strfreev (lines);
 	} else {
-		syslog (LOG_ERR, "pam_grm_auth: Error attempting to get contents of %s", PROC_SELF_MOUNTS);
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to get contents of %s", PROC_SELF_MOUNTS);
 	}
 
 	return dirs;
@@ -158,7 +157,7 @@ unmount_dirs (const char *homedir, GList *mount_dirs)
 			char *cmd = g_strdup_printf ("%s -ck %s", FUSER_COMMAND, mnt_dir);
 
 			if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
-				syslog (LOG_ERR, "pam_grm_auth: Error attempting to unmount %s directory: [%s]", mnt_dir, error->message);
+				syslog (LOG_ERR, "pam_gooroom: Error attempting to unmount %s directory: [%s]", mnt_dir, error->message);
 				g_error_free (error);
 				ret = FALSE;
 			}
@@ -170,18 +169,18 @@ unmount_dirs (const char *homedir, GList *mount_dirs)
 }
 
 static gboolean
-kill_user_process (uid_t uid, const char *deluser)
+kill_user_process (const char *deluser)
 {
 	char *cmd = NULL;
 	GError *error = NULL;
 	gboolean ret = FALSE;
 
-	cmd = g_strdup_printf ("%s -U %d", PKILL_COMMAND, uid);
+	cmd = g_strdup_printf ("%s -u %s", PKILL_COMMAND, deluser);
 
 	if (g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
 		ret = TRUE;
 	} else {
-		syslog (LOG_ERR, "pam_grm_auth: Error attempting to kill %s's process : [%s]", deluser, error->message);
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to kill %s's process : [%s]", deluser, error->message);
 		g_error_free (error);
 		ret = FALSE;
 	}
@@ -201,7 +200,7 @@ delete_account (const char *deluser)
 	if (g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
 		ret = TRUE;
 	} else {
-		syslog (LOG_ERR, "pam_grm_auth: Error attempting to delete %s account: [%s]", deluser, error->message);
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to delete %s account: [%s]", deluser, error->message);
 		g_error_free (error);
 		ret = FALSE;
 	}
@@ -219,12 +218,22 @@ remove_ecryptfs (const char *deluser)
 	char *ecryptfs_dir = NULL;
 
 	ecryptfs_dir = g_build_filename (ECRYPTFS_DIR, deluser, NULL);
-	if (g_file_test (ecryptfs_dir, G_FILE_TEST_EXISTS) && 
+	if (g_file_test (ecryptfs_dir, G_FILE_TEST_EXISTS) &&
         (!g_str_equal (ecryptfs_dir, ECRYPTFS_DIR)))
 	{
 		GFile *file = g_file_new_for_path (ecryptfs_dir);
 		ret = delete_file_recursively (file);
 		g_object_unref (file);
+
+//		#define RM_COMMAND           "/bin/rm"
+//		char *cmd = g_strdup_printf ("%s -rf %s", RM_COMMAND, ecryptfs_dir);
+//		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
+//			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete %s account: [%s]", deluser, error->message);
+//			g_error_free (error);
+//			ret = FALSE;
+//		}
+//
+//		g_free (cmd);
 	}
 
 	g_free (ecryptfs_dir);
@@ -233,9 +242,9 @@ remove_ecryptfs (const char *deluser)
 }
 
 static void
-clean_up_account (const char *deluser,
-                  const char *except_user,
-                  GList      *mount_dirs)
+cleanup_account (const char *deluser,
+                 const char *except_user,
+                 GList      *mount_dirs)
 {
 	struct passwd *entry = getpwnam (deluser);
 	if (entry) {
@@ -245,7 +254,7 @@ clean_up_account (const char *deluser,
 		if (except_user && g_str_equal (deluser, except_user))
 			return;
 
-		kill_user_process (entry->pw_uid, deluser);
+		kill_user_process (deluser);
 
 		if (unmount_dirs (entry->pw_dir, mount_dirs)) {
 			if (remove_ecryptfs (deluser)) {
@@ -281,8 +290,10 @@ cleanup_users (const char *except_user)
 				}
 				char **items = g_strsplit (columns[4], ",", -1);
 				if (g_strv_length (items) > 4) {
-					if (g_str_equal (items[4], GOOROOM_ACCOUNT)) {
-						clean_up_account (columns[0], except_user, mount_dirs);
+					if (g_str_equal (items[4], GOOROOM_ACCOUNT) ||
+                        g_str_equal (items[4], GOOGLE_ACCOUNT) ||
+                        g_str_equal (items[4], NAVER_ACCOUNT)) {
+						cleanup_account (columns[0], except_user, mount_dirs);
 					}
 				}
 				g_strfreev (items);
@@ -308,18 +319,37 @@ cleanup_function_enabled (void)
 
 	g_key_file_load_from_file (keyfile, AGENT_CONF, G_KEY_FILE_KEEP_COMMENTS, &error);
 
-	if (error == NULL) { 
+	if (error == NULL) {
 		if (g_key_file_has_group (keyfile, "CLIENTJOB")) {
 			char *enable = g_key_file_get_string (keyfile, "CLIENTJOB", "HOMEFOLDER_OPERATION", NULL);
 			ret = g_str_equal (enable, "enable");
 			g_free (enable);
 		}
 	} else {
-		syslog (LOG_ERR, "pam_grm_auth: Error attempting to load %s: [%s]", AGENT_CONF, error->message);
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to load %s: [%s]", AGENT_CONF, error->message);
 		g_clear_error (&error);
 	}
 
 	g_key_file_free (keyfile);
 
 	return ret;
+}
+
+void
+cleanup_cookies (const char *user)
+{
+	struct passwd *entry = getpwnam (user);
+
+	if (entry) {
+		char *filename = g_build_filename (entry->pw_dir,
+                                           ".config/chromium/Default/Cookies", NULL);
+
+		if (g_file_test (filename, G_FILE_TEST_EXISTS)) {
+			if (g_remove (filename) == -1) {
+				syslog (LOG_INFO, "pam_gooroom: Error attempting to clean up user credential [%s]", __FUNCTION__);
+			}
+		}
+
+		g_free (filename);
+	}
 }

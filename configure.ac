@@ -1,4 +1,4 @@
-AC_INIT([libpam-gooroom-authenticator], [0.1.0])
+AC_INIT([pam-gooroom], [0.1.0])
 AC_CONFIG_HEADER(config.h)
 
 AM_MAINTAINER_MODE
@@ -13,19 +13,22 @@ ALL_LINGUAS="en_US ko"
 AC_PREREQ([2.59])
 AC_PROG_CC
 AC_PROG_CC_STDC
-AC_PROG_LIBTOOL
 AM_PROG_CC_C_O
+AC_PROG_LIBTOOL
 
-AC_SUBST(PAMDIR, "\$(exec_prefix)/lib/security")
-AC_ARG_WITH(pam-dir,
-  AC_HELP_STRING([--with-pam-dir=DIR],
-                 [Where to install PAM module [[PREFIX/lib/security]]]),
-            [case "${withval}" in
-            /*) PAMDIR="${withval}";;
-            ./*|../*) AC_MSG_ERROR(Bad value for --with-pam-dir);;
-            *)  PAMDIR="\$(exec_prefix)/lib/${withval}";;
-            esac])
-AC_MSG_NOTICE([PAM installation path $PAMDIR])
+AC_ARG_WITH(
+	[pamdir],
+	[AS_HELP_STRING([--with-pamdir=PATH],[Specify the directory where PAM modules are stored])],
+	[pamdir="${withval}"],
+	[
+		if test "${prefix}" = "/usr"; then
+			pamdir="/lib${libdir##*/lib}/security"
+		else
+			pamdir="\$(libdir)/security"
+		fi
+	]
+)
+AC_SUBST([pamdir])
 
 PKG_CHECK_MODULES([GLIB], [glib-2.0])
 PKG_CHECK_MODULES([GIO], [gio-2.0])

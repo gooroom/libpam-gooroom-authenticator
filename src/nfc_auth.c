@@ -23,16 +23,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <config.h>
 
 #include <glib.h>
+#include <glib/gi18n.h>
 
 #include <security/pam_modules.h>
-#include <security/pam_ext.h>
 
 #include <winscard.h>
 
-#include "common.h"
+#include "pam-common.h"
 #include "nfc_auth.h"
 
 
@@ -221,7 +220,7 @@ nfc_data_get (pam_handle_t *pamh, char **data)
 
 	mszReaders = malloc (sizeof(char)*dwReaders);
 	if (mszReaders == NULL) {
-		pam_msg (pamh, _("Not enough memory"));
+		send_info_msg (pamh, _("Not enough memory"));
 		goto out;
 	}
 
@@ -238,14 +237,14 @@ nfc_data_get (pam_handle_t *pamh, char **data)
 	}
 
 	if (SCARD_E_NO_READERS_AVAILABLE == rv || 0 == nbReaders) {
-		pam_msg (pamh, _("Reader is not available."));
+		send_info_msg (pamh, _("Reader is not available."));
 		goto out;
 	}
 
 	/* allocate the readers table */
 	readers = calloc (nbReaders+1, sizeof(char *));
 	if (NULL == readers) {
-		pam_msg (pamh, _("Not enough memory"));
+		send_info_msg (pamh, _("Not enough memory"));
 		goto out;
 	}
 
@@ -261,7 +260,7 @@ nfc_data_get (pam_handle_t *pamh, char **data)
 	/* allocate the ReaderStates table */
 	rgReaderStates_t = calloc (nbReaders+1, sizeof(* rgReaderStates_t));
 	if (NULL == rgReaderStates_t) {
-		pam_msg (pamh, _("Not enough memory"));
+		send_info_msg (pamh, _("Not enough memory"));
 		goto out;
 	}
 	/* Set the initial states to something we do not know
@@ -288,7 +287,7 @@ nfc_data_get (pam_handle_t *pamh, char **data)
 	{
 		if (pnp) {
 			if (rgReaderStates_t[nbReaders-1].dwEventState & SCARD_STATE_CHANGED) {
-				pam_msg (pamh, _("Reader is not available."));
+				send_info_msg (pamh, _("Reader is not available."));
 				goto out;
 			}
 		} else {
@@ -316,23 +315,23 @@ nfc_data_get (pam_handle_t *pamh, char **data)
 			 */
 
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_IGNORE) {
-				pam_msg (pamh, _("Ignore this reader."));
+				send_info_msg (pamh, _("Ignore this reader."));
 				goto out;
 			}
 
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_UNKNOWN) {
-				pam_msg (pamh, _("Unknown Reader."));
+				send_info_msg (pamh, _("Unknown Reader."));
 				goto out;
 			}
 
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_UNAVAILABLE) {
-				pam_msg (pamh, _("Status unavailable."));
+				send_info_msg (pamh, _("Status unavailable."));
 				goto out;
 			}
 
 			/* Card removed */
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_EMPTY) {
-				pam_msg (pamh, _("Tap your card."));
+				send_info_msg (pamh, _("Tap your card."));
 			}
 
 			/* Card inserted */
@@ -350,22 +349,22 @@ nfc_data_get (pam_handle_t *pamh, char **data)
 			}
 
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_ATRMATCH) {
-				pam_msg (pamh, _("ATR matches card."));
+				send_info_msg (pamh, _("ATR matches card."));
 				goto out;
 			}
 
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_EXCLUSIVE) {
-				pam_msg (pamh, _("Exclusive Mode."));
+				send_info_msg (pamh, _("Exclusive Mode."));
 				goto out;
 			}
 
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_INUSE) {
-				pam_msg (pamh, _("Shared Mode."));
+				send_info_msg (pamh, _("Shared Mode."));
 				goto out;
 			}
 
 			if (rgReaderStates_t[current_reader].dwEventState & SCARD_STATE_MUTE) {
-				pam_msg (pamh, _("Unresponsive card."));
+				send_info_msg (pamh, _("Unresponsive card."));
 				goto out;
 			}
 		} /* for */
@@ -374,13 +373,13 @@ nfc_data_get (pam_handle_t *pamh, char **data)
 	} /* while */
 
 	if (rv == SCARD_E_TIMEOUT) {
-		pam_msg (pamh, _("Input Timeout."));
+		send_info_msg (pamh, _("Input Timeout."));
 	}
 
 out:
 	/* A reader disappeared */
 	if (SCARD_E_UNKNOWN_READER == rv) {
-		pam_msg (pamh, _("Reader is not available."));
+		send_info_msg (pamh, _("Reader is not available."));
 	}
 
 	/* We try to leave things as clean as possible */

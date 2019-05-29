@@ -1,12 +1,12 @@
-# English translations for libpam-gooroom-authenticator package.
-# Copyright (C) 2015-2017 libpam-gooroom-authenticator'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the libpam-gooroom-authenticator package.
+# English translations for pam-gooroom package.
+# Copyright (C) 2015-2017 pam-gooroom'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the pam-gooroom package.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
+"Project-Id-Version: pam-gooroom 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-03-19 17:03+0900\n"
+"POT-Creation-Date: 2019-05-29 14:24+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: English\n"
 "Language: en_US\n"
@@ -15,74 +15,85 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:1116
+#: src/pam.c:1381
 msgid "Failed to connect to server"
 msgstr "Failed to connect to server"
 
-#: src/pam.c:1119
+#: src/pam.c:1384
 msgid "Operation timeout"
 msgstr "Operation timeout"
 
-#: src/pam.c:1122
+#: src/pam.c:1387
 msgid "Connection error"
 msgstr "Connection error"
 
-#: src/pam.c:1420
+#: src/pam.c:1955
 msgid "Failure of the Two-Factor Authentication"
 msgstr "Failure of the Two-Factor Authentication"
 
-#: src/pam.c:1434
+#: src/pam.c:1969
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "Failed to rewrap passphrase for ecryptfs"
 
-#: src/pam.c:1683
+#: src/pam.c:2173
+msgid "Enter current password:"
+msgstr ""
+
+#: src/pam.c:2204
+msgid "Enter new password:"
+msgstr ""
+
+#: src/pam.c:2209
+msgid "Retype new password:"
+msgstr ""
+
+#: src/pam.c:2216
 msgid "Passwords do not match."
 msgstr "Passwords do not match."
 
-#: src/pam.c:1690
-msgid "It's WAY too short."
-msgstr "It's WAY too short."
-
-#: src/nfc_auth.c:224 src/nfc_auth.c:248 src/nfc_auth.c:264
+#: src/nfc_auth.c:223 src/nfc_auth.c:247 src/nfc_auth.c:263
 msgid "Not enough memory"
 msgstr "Not enough memory"
 
-#: src/nfc_auth.c:241 src/nfc_auth.c:291 src/nfc_auth.c:383
+#: src/nfc_auth.c:240 src/nfc_auth.c:290 src/nfc_auth.c:382
 msgid "Reader is not available."
 msgstr "Reader is not available."
 
-#: src/nfc_auth.c:319
+#: src/nfc_auth.c:318
 msgid "Ignore this reader."
 msgstr "Ignore this reader."
 
-#: src/nfc_auth.c:324
+#: src/nfc_auth.c:323
 msgid "Unknown Reader."
 msgstr "Unknown Reader."
 
-#: src/nfc_auth.c:329
+#: src/nfc_auth.c:328
 msgid "Status unavailable."
 msgstr "Status unavailable."
 
-#: src/nfc_auth.c:335
+#: src/nfc_auth.c:334
 msgid "Tap your card."
 msgstr "Tap your card."
 
-#: src/nfc_auth.c:353
+#: src/nfc_auth.c:352
 msgid "ATR matches card."
 msgstr "ATR matches card."
 
-#: src/nfc_auth.c:358
+#: src/nfc_auth.c:357
 msgid "Exclusive Mode."
 msgstr "Exclusive Mode."
 
-#: src/nfc_auth.c:363
+#: src/nfc_auth.c:362
 msgid "Shared Mode."
 msgstr "Shared Mode."
 
-#: src/nfc_auth.c:368
+#: src/nfc_auth.c:367
 msgid "Unresponsive card."
 msgstr "Unresponsive card."
 
-#: src/nfc_auth.c:377
+#: src/nfc_auth.c:376
 msgid "Input Timeout."
 msgstr "Input Timeout."
+
+#~ msgid "It's WAY too short."
+#~ msgstr "It's WAY too short."

@@ -4,9 +4,16 @@
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH).
 
 %:
+#	dh $@ --with autoreconf
 	dh $@
 
 override_dh_auto_configure:
 	./autogen.sh
 	dh_auto_configure -- \
-		--with-pam-dir=/lib/$(DEB_HOST_MULTIARCH)/security
+		--with-pamdir=/lib/$(DEB_HOST_MULTIARCH)/security
+
+override_dh_fixperms:
+	dh_fixperms
+
+	find debian -name 'grm-auth-check-helper' -exec chown root {} \;
+	find debian -name 'grm-auth-check-helper' -exec chmod +s {} \;
