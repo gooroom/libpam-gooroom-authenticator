@@ -22,5 +22,5 @@ Homepage: https://git.gooroom.kr/libpam-gooroom-authenticator
 
 Package: pam-gooroom
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, curl
 Description: PAM module for gooroom
