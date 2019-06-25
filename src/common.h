@@ -30,7 +30,7 @@
 #define _(string) gettext(string)
 
 #define GRM_USER                        ".grm-user"
-#define GOOROOM_ACCOUNT                 "gooroom-online-account"
+#define GOOROOM_ACCOUNT                 "gooroom-account"
 #define GOOGLE_ACCOUNT                  "google-account"
 #define NAVER_ACCOUNT                   "naver-account"
 #define GOOROOM_CERT                    "/etc/ssl/certs/gooroom_client.crt"

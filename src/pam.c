@@ -97,6 +97,7 @@ typedef struct _PWQuality {
 	char *lcredit;
 	char *ocredit;
 	char *difok;
+	char *minclass;
 } PWQuality;
 
 typedef struct _DupClient {
@@ -440,6 +441,7 @@ get_dupclients (json_object *dupclients_obj)
 static PWQuality *
 get_pwquality (json_object *pwquality_obj)
 {
+	int minclass = 0;
 	const char *val;
 	PWQuality *pwquality;
 	json_object *p_obj[6] = {0,};
@@ -457,7 +459,7 @@ get_pwquality (json_object *pwquality_obj)
 	pwquality->minlen = g_strdup (val);
 	val = p_obj[1] ? json_object_get_string (p_obj[1]) : "0";
 	pwquality->dcredit = g_strdup (val);
-	val = p_obj[3] ? json_object_get_string (p_obj[2]) : "0";
+	val = p_obj[2] ? json_object_get_string (p_obj[2]) : "0";
 	pwquality->ucredit = g_strdup (val);
 	val = p_obj[3] ? json_object_get_string (p_obj[3]) : "0";
 	pwquality->lcredit = g_strdup (val);
@@ -465,6 +467,13 @@ get_pwquality (json_object *pwquality_obj)
 	pwquality->ocredit = g_strdup (val);
 	val = p_obj[5] ? json_object_get_string (p_obj[5]) : "1";
 	pwquality->difok = g_strdup (val);
+
+	if (!g_str_equal (pwquality->dcredit, "0")) ++minclass;
+	if (!g_str_equal (pwquality->ucredit, "0")) ++minclass;
+	if (!g_str_equal (pwquality->lcredit, "0")) ++minclass;
+	if (!g_str_equal (pwquality->ocredit, "0")) ++minclass;
+
+	pwquality->minclass = g_strdup_printf ("%d", minclass);
 
 	return pwquality;
 }
@@ -690,7 +699,8 @@ create_config_for_pam_pwquality (PWQuality *pwquality)
 			pwquality->dcredit,
 			pwquality->ucredit,
 			pwquality->lcredit,
-			pwquality->ocredit);
+			pwquality->ocredit,
+			pwquality->minclass);
 
 	char *str = g_string_free (contents, FALSE);
 	if (!g_file_set_contents (PWQUALITY_CONF, str, -1, NULL)) {
@@ -1916,7 +1926,7 @@ handle_cloud_authenticate (pam_handle_t *pamh, const char *user, int account_typ
 static int 
 handle_gooroom_authenticate (pam_handle_t *pamh, const char *user)
 {
-	int retval;
+	int retval = PAM_AUTH_ERR;
 	char *url = NULL;
 	const char *password;
 
@@ -1929,6 +1939,7 @@ handle_gooroom_authenticate (pam_handle_t *pamh, const char *user)
 	if (pam_get_item (pamh, PAM_AUTHTOK, (const void **)&password) != PAM_SUCCESS)
 		return PAM_AUTH_ERR;
 
+	/* for unlocking screensaver */
 	if (user_logged_in (user)) {
 		retval = check_auth (pamh, url, user, password);
 	} else {
@@ -1983,12 +1994,6 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	int retval;
 	int account_type = ACCOUNT_TYPE_LOCAL;
 	const char *user;
-
-	/* Initialize i18n */
-//	setlocale (LC_ALL, "");
-//	bindtextdomain (PACKAGE, LOCALEDIR);
-//  bind_textdomain_codeset (PACKAGE, "UTF-8");
-//  textdomain (PACKAGE);
 
 	/* step through arguments */
 	for (; argc-- > 0; ++argv) {
