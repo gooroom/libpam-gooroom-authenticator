@@ -1527,45 +1527,6 @@ logout_from_online (const char *host, const char *token)
 	return retval;
 }
 
-static void
-send_request_to_agent (pam_handle_t *pamh, const char *request, const char *user)
-{
-	GVariant   *variant;
-	GDBusProxy *proxy;
-	GError     *error = NULL;
-
-	proxy = g_dbus_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM,
-			G_DBUS_CALL_FLAGS_NONE,
-			NULL,
-			"kr.gooroom.agent",
-			"/kr/gooroom/agent",
-			"kr.gooroom.agent",
-			NULL,
-			&error);
-
-	if (proxy) {
-		const char *json = "{\"module\":{\"module_name\":\"config\",\"task\":{\"task_name\":\"%s\",\"in\":{\"login_id\":\"%s\"}}}}";
-
-		char *arg = g_strdup_printf (json, request, user);
-
-		variant = g_dbus_proxy_call_sync (proxy, "do_task",
-				g_variant_new ("(s)", arg),
-				G_DBUS_CALL_FLAGS_NONE, -1, NULL, &error);
-
-		g_free (arg);
-
-		if (variant) {
-			g_variant_unref (variant);
-		} else {
-			syslog (LOG_ERR, "pam_gooroom: [%s : %s]", __FUNCTION__, error->message);
-			g_error_free (error);
-		}
-	} else {
-		syslog (LOG_ERR, "pam_gooroom: Error creating proxy [%s : %s]", __FUNCTION__, error->message);
-		g_error_free (error);
-	}
-}
-
 static gboolean
 rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, const char *new_password)
 {
@@ -2356,12 +2317,6 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to get login data [%s]", __FUNCTION__);
 		return PAM_SUCCESS;
 	}
-
-	/* request to save resource access rule for GOOROOM system */
-	send_request_to_agent (pamh, "set_authority_config", user);
-
-	/* request to check blocking packages change */
-	send_request_to_agent (pamh, "get_update_operation_with_loginid", user);
 
 	return PAM_SUCCESS;
 }
