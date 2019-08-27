@@ -617,7 +617,8 @@ parse_login_data (LoginData *login_data, const char *data)
 		val = p_obj[8] ? json_object_get_string (p_obj[8]) : "";
 		login_data->acct_exp = g_strdup (val);
 
-		login_data->acct_exp_remain = p_obj[9] ? json_object_get_int (p_obj[9]) : 99999;
+		val = p_obj[9] ? json_object_get_string (p_obj[9]) : "";
+		login_data->acct_exp_remain = (g_str_equal (val, "")) ? 99999 : json_object_get_int (p_obj[9]);
 
 		login_data->mounts = get_mounts (dt_info_obj);
 		login_data->pwquality = get_pwquality (pwquality_obj);
