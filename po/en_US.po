@@ -5,8 +5,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: pam-gooroom 0.1.0\n"
-"Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-06-25 18:27+0900\n"
+"Report-Msgid-Bugs-To: gooroom@gooroom.kr\n"
+"POT-Creation-Date: 2019-08-29 16:26+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: English\n"
 "Language: en_US\n"
@@ -15,27 +15,39 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:1391
+#: src/pam.c:1392
 msgid "Failed to connect to server"
 msgstr "Failed to connect to server"
 
-#: src/pam.c:1394
+#: src/pam.c:1395
 msgid "Operation timeout"
 msgstr "Operation timeout"
 
-#: src/pam.c:1397
+#: src/pam.c:1398
 msgid "Connection error"
 msgstr "Connection error"
 
-#: src/pam.c:1966
+#: src/pam.c:1928
 msgid "Failure of the Two-Factor Authentication"
 msgstr "Failure of the Two-Factor Authentication"
 
-#: src/pam.c:1980
+#: src/pam.c:1942
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "Failed to rewrap passphrase for ecryptfs"
 
-#: src/pam.c:2221
+#: src/pam.c:2140
+msgid "Current password: "
+msgstr "Current password:"
+
+#: src/pam.c:2171
+msgid "New password: "
+msgstr "New password:"
+
+#: src/pam.c:2176
+msgid "Retype new password: "
+msgstr "Retype new password:"
+
+#: src/pam.c:2183
 msgid "Passwords do not match."
 msgstr "Passwords do not match."
 

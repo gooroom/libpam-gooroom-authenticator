@@ -2137,7 +2137,7 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		}
 
 		if (oldpassword == NULL) {
-			rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, "Current password: ", &oldpassword);
+			rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, _("Current password: "), &oldpassword);
 
 			if (rc != PAM_SUCCESS) {
 				PAM_FORGET (oldpassword);
@@ -2168,12 +2168,12 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		if (!new_password || !chk_password) {
 			/* loop, trying to get matching new passwords */
 			while (attempts++ < 3) {
-				rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, "Enter new password: ", &new_password);
+				rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, _("New password: "), &new_password);
 				if (rc != PAM_SUCCESS) {
 					goto error;
 				}
 
-				rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, "Retype new password: ", &chk_password);
+				rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, _("Retype new password: "), &chk_password);
 				if (rc != PAM_SUCCESS) {
 					goto error;
 				}

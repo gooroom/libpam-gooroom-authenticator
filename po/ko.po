@@ -5,8 +5,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: pam-gooroom 0.1.0\n"
-"Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-06-25 18:27+0900\n"
+"Report-Msgid-Bugs-To: gooroom@gooroom.kr\n"
+"POT-Creation-Date: 2019-08-29 16:26+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Korean\n"
 "Language: ko\n"
@@ -15,29 +15,41 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:1391
+#: src/pam.c:1392
 msgid "Failed to connect to server"
 msgstr "서버 연결에 실패하였습니다."
 
-#: src/pam.c:1394
+#: src/pam.c:1395
 msgid "Operation timeout"
 msgstr "서버 연결 시간이 초과하였습니다."
 
-#: src/pam.c:1397
+#: src/pam.c:1398
 msgid "Connection error"
 msgstr "서버 연결 에러가 발생하였습니다."
 
-#: src/pam.c:1966
+#: src/pam.c:1928
 msgid "Failure of the Two-Factor Authentication"
 msgstr ""
 "이중 인증에 실패하였습니다.\n"
 "인증을 다시 시도 하시기 바랍니다."
 
-#: src/pam.c:1980
+#: src/pam.c:1942
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "암호화 파일시스템에 연결할 수 없습니다."
 
-#: src/pam.c:2221
+#: src/pam.c:2140
+msgid "Current password: "
+msgstr "현재  암호:"
+
+#: src/pam.c:2171
+msgid "New password: "
+msgstr "새  암호:"
+
+#: src/pam.c:2176
+msgid "Retype new password: "
+msgstr "새  암호 재입력:"
+
+#: src/pam.c:2183
 msgid "Passwords do not match."
 msgstr "암호가 일치하지 않습니다."
 
