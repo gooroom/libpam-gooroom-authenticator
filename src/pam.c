@@ -64,6 +64,7 @@
 #define PAM_MOUNT_CONF_PATH       "/etc/security/pam_mount.conf.xml"
 #define PWQUALITY_CONF            "/etc/security/pwquality.conf"
 #define PWQUALITY_CONF_ORG        "/etc/security/pwquality.conf.org"
+#define GCSR_CONF                 "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 
 #define PAM_FORGET(X) if (X) {memset(X, 0, strlen(X));free(X);X = NULL;}
 
@@ -194,6 +195,26 @@ str_to_sec (const char *date /* yyyy-mm-dd */)
 	return sec;
 }
 
+static gboolean
+registered_gpms (void)
+{
+	gchar *glm = NULL;
+	gboolean ret = FALSE;
+	GKeyFile *keyfile = NULL;
+
+	keyfile = g_key_file_new ();
+	if (g_key_file_load_from_file (keyfile, GCSR_CONF, G_KEY_FILE_KEEP_COMMENTS, NULL)) {
+		glm  = g_key_file_get_string (keyfile, "domain", "glm", NULL);
+	}
+
+	ret = (glm != NULL) ? TRUE : FALSE;
+
+	g_free (glm);
+	g_key_file_free (keyfile);
+
+	return ret;
+}
+
 static void
 make_sure_to_create_save_dir (uid_t uid, uid_t gid)
 {
@@ -248,7 +269,11 @@ delete_config_files (const char *user)
 
 		g_free (grm_user);
 	}
+}
 
+static void
+restore_pwquality_file (void)
+{
 	if (g_file_test (PWQUALITY_CONF_ORG, G_FILE_TEST_EXISTS)) {
 		GError *error = NULL;
 		GFile *sfile, *dfile;
@@ -328,6 +353,7 @@ static void
 save_login_data (char *data, uid_t uid, uid_t gid)
 {
 	char *grm_user = g_strdup_printf ("%s/%d/gooroom/%s", VAR_RUN_USER_DIR, uid, GRM_USER);
+
 	g_file_set_contents (grm_user, data, -1, NULL);
 	change_mode_and_owner (grm_user, uid, gid);
 	g_free (grm_user);
@@ -648,6 +674,8 @@ get_account_type (const char *user)
 		} else {
 			account_type = ACCOUNT_TYPE_GOOROOM;
 		}
+
+		return account_type;
 	}
 
 	char **tokens = g_strsplit (user_entry->pw_gecos, ",", -1);
@@ -1882,6 +1910,78 @@ handle_cloud_authenticate (pam_handle_t *pamh, const char *user, int account_typ
 		}
 	}
 
+	if (retval == PAM_SUCCESS && registered_gpms ()) {
+		CURL *curl;
+		CURLcode res = CURLE_OK;
+		struct MemoryStruct chunk;
+
+		chunk.size = 0;
+		chunk.memory = malloc (1);
+
+		curl_global_init (CURL_GLOBAL_ALL);
+
+		/* get a curl handle */
+		curl = curl_easy_init ();
+
+		if (curl) {
+			const char *service_name;
+
+			if (account_type == ACCOUNT_TYPE_GOOGLE) {
+				service_name = "google";
+			} else if (account_type == ACCOUNT_TYPE_NAVER) {
+				service_name = "naver";
+			}
+
+			char *host = parse_url ();
+			char *url = g_strdup_printf ("https://%s/glm/v1/pam/desktop", host);
+			char *post_fields = g_strdup_printf ("service_name=%s", service_name);
+
+			curl_easy_setopt (curl, CURLOPT_URL, url);
+			curl_easy_setopt (curl, CURLOPT_SSLCERT, GOOROOM_CERT);
+			curl_easy_setopt (curl, CURLOPT_SSLKEY, GOOROOM_PRIVATE_KEY);
+
+			/* Now specify the POST data */
+			curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
+
+			/* set timeout */
+			curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
+			curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
+			curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+
+			res = curl_easy_perform (curl);
+			curl_easy_cleanup (curl);
+
+			g_free (url);
+			g_free (post_fields);
+		} else {
+			syslog (LOG_ERR, "pam_gooroom: Error creating curl [%s]", __FUNCTION__);
+		}
+
+		curl_global_cleanup ();
+
+		if (res != CURLE_OK) {
+			syslog (LOG_ERR, "pam_gooroom: Error attempting to request desktop information [%s]", __FUNCTION__);
+			goto done;
+		}
+
+		char *data = g_strdup (chunk.memory);
+		if (!data) {
+			goto done;
+		}
+
+		struct passwd *user_entry = getpwnam (user);
+		if (user_entry) {
+			/* make sure to create /var/run/user/$(uid)/gooroom directory */
+			make_sure_to_create_save_dir (user_entry->pw_uid, user_entry->pw_gid);
+			save_login_data (data, user_entry->pw_uid, user_entry->pw_gid);
+		}
+
+	done:
+		g_free (chunk.memory);
+		g_free (data);
+	}
+
+
 	return retval;
 }
 
@@ -2288,7 +2388,6 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
 	int CLEANUP = 0;
 	const char *user;
-	LoginData *login_data;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_gooroom: Couldn't get user name [%s]", __FUNCTION__);
@@ -2309,15 +2408,11 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
     if (CLEANUP > 0)
         cleanup_users (user);
 
-	if (get_account_type (user) != ACCOUNT_TYPE_GOOROOM) {
+	if (get_account_type (user) == ACCOUNT_TYPE_LOCAL)
 		delete_config_files (user);
-		return PAM_SUCCESS;
-	}
 
-	if (pam_get_data (pamh, "login_data", (const void**)&login_data) != PAM_SUCCESS) {
-		syslog (LOG_ERR, "pam_gooroom: Error attempting to get login data [%s]", __FUNCTION__);
-		return PAM_SUCCESS;
-	}
+	if (get_account_type (user) != ACCOUNT_TYPE_GOOROOM )
+		restore_pwquality_file ();
 
 	return PAM_SUCCESS;
 }
@@ -2336,7 +2431,7 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 	/* step through arguments */
 	for (; argc-- > 0; ++argv) {
 		if (!strcmp (*argv, "cleanup")) {
-			CLEANUP = TRUE;
+			CLEANUP++;
 			break;
 		}
 	}
@@ -2375,6 +2470,7 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 
 out:
 	delete_config_files (user);
+	restore_pwquality_file ();
 
 	if (CLEANUP > 0)
 		cleanup_users (NULL);
