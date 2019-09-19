@@ -59,6 +59,7 @@
 #define DEFAULT_WARNING_DAYS      7 // 7days
 #define ACCOUNT_EXPIRATION_CODE   "GR45"
 #define ACCOUNT_LOCKING_CODE      "GR46"
+#define PASSWORD_EXPIRATION_CODE  "GR49"
 #define AUTH_FAILURE_CODE         "ELM002AUTHF"
 #define VAR_RUN_USER_DIR          "/var/run/user"
 #define PAM_MOUNT_CONF_PATH       "/etc/security/pam_mount.conf.xml"
@@ -609,7 +610,7 @@ parse_login_data (LoginData *login_data, const char *data)
 		p_obj[5] = JSON_OBJECT_GET (login_info_obj, "pwd_max_day");
 		p_obj[6] = JSON_OBJECT_GET (login_info_obj, "pwd_temp_yn");
 		p_obj[7] = JSON_OBJECT_GET (login_info_obj, "passphrase");
-		p_obj[8] = JSON_OBJECT_GET (login_info_obj, "expire_dt");
+		p_obj[8] = JSON_OBJECT_GET (login_info_obj, "expire_dt"); //account expiration
 		p_obj[9] = JSON_OBJECT_GET (login_info_obj, "expire_remain_day");
 
 		val = p_obj[0] ? json_object_get_string (p_obj[0]) : "";
@@ -1481,6 +1482,9 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, ACCOUNT_EXPIRATION_CODE)) {
 			msg = g_strdup ("Account Expiration");
+			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
+		} else if (g_str_equal (res_code, PASSWORD_EXPIRATION_CODE)) {
+			msg = g_strdup ("Password Expiration");
 			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		}
 
