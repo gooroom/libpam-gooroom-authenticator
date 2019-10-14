@@ -2,7 +2,7 @@
  * Copyright (C) 2007 Daniel Drake <dsd@gentoo.org>
  * Copyright (C) 2008 Bastien Nocera <hadess@hadess.net>
  * Copyright (C) 2001-2011  Ludovic Rousseau <ludovic.rousseau@free.fr>
- * Copyright (c) 2015 - 2017 gooroom <gooroom@gooroom.kr>
+ * Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@
 #include <winscard.h>
 
 #include "pam-common.h"
-#include "nfc_auth.h"
+#include "nfc-auth.h"
 
 
 #ifndef SCARD_E_NO_READERS_AVAILABLE

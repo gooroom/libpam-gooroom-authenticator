@@ -1,2 +1,2 @@
 src/pam.c
-src/nfc_auth.c
+src/nfc-auth.c

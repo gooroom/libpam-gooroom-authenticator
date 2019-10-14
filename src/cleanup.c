@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015 - 2017 gooroom <gooroom@gooroom.kr>
+ * Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -224,16 +224,6 @@ remove_ecryptfs (const char *deluser)
 		GFile *file = g_file_new_for_path (ecryptfs_dir);
 		ret = delete_file_recursively (file);
 		g_object_unref (file);
-
-//		#define RM_COMMAND           "/bin/rm"
-//		char *cmd = g_strdup_printf ("%s -rf %s", RM_COMMAND, ecryptfs_dir);
-//		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
-//			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete %s account: [%s]", deluser, error->message);
-//			g_error_free (error);
-//			ret = FALSE;
-//		}
-//
-//		g_free (cmd);
 	}
 
 	g_free (ecryptfs_dir);

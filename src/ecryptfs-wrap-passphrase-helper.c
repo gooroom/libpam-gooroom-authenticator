@@ -1,5 +1,8 @@
 /**
- * Copyright (c) 2015 - 2017 gooroom <gooroom@gooroom.kr>
+ * Copyright (C) 2007 International Business Machines
+ * Author(s): Michael Halcrow <mhalcrow@us.ibm.com>
+ *            Dustin Kirkland <kirkland@ubuntu.com>
+ * Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

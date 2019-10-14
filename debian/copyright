@@ -1,10 +1,27 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: libpam-gooroom-authenticator
 Source: http://git.gooroom.kr/libpam-gooroom-authenticator
 
 Files: *
-Copyright:  2015-2017 gooroom <gooroom@gooroom.kr>
+Copyright: Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
 License: GPL-2+
+
+Files: src/ecryptfs-rewrap-passphrase-helper.c
+       src/ecryptfs-wrap-passphrase-file-helper.c
+       src/ecryptfs-wrap-passphrase-helper.c  
+Copyright: Copyright (C) 2007 International Business Machines
+           Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
+License: GPL-2+
+
+Files: nfc-auth.c
+Copyright: Copyright (C) 2007 Daniel Drake <dsd@gentoo.org>
+           Copyright (C) 2008 Bastien Nocera <hadess@hadess.net>
+           Copyright (C) 2001-2011  Ludovic Rousseau <ludovic.rousseau@free.fr>
+           Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
+License: GPL-2+
+
+Files: jwt.*
+Copyright: Copyright (C) 2015-2017 Ben Collins <ben@cyphre.com>
+License: MPL-2.0
 
 License: GPL-2+
  This program is free software; you can redistribute it
@@ -28,6 +45,6 @@ License: GPL-2+
  License version 2 can be found in the file
  `/usr/share/common-licenses/GPL-2'.
 
-Files: debian/*
-Copyright: 2011 LENART Janos <ocsi@debian.org>
-License: public-domain
+License: MPL-2.0
+ On Debian systems the full text of the MPL-2.0 can be found in
+ /usr/share/common-licenses/MPL-2.0.

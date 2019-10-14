@@ -18,9 +18,8 @@ Build-Depends: debhelper (>= 9),
                libssl-dev,
                libb64-dev
 Standards-Version: 3.9.8
-Homepage: https://git.gooroom.kr/libpam-gooroom-authenticator
 
 Package: pam-gooroom
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, curl
-Description: PAM module for gooroom
+Description: Pluggable Authentication Module for Gooroom

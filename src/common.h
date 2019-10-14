@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Gooroom <gooroom@gooroom.kr>
+ * Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,23 +38,6 @@
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
 
 G_BEGIN_DECLS
-
-#if 0
-char *create_hash_for_type1     (const char *user, const char *password, gpointer user_data);
-char *create_hash_for_type2     (const char *user, const char *password, gpointer user_data);
-char *create_hash_for_default   (const char *user, const char *password, gpointer user_data);
-
-#define HASH_FUNC(name, hash_func) {name, hash_func}
-
-static struct {
-	const char *name;
-	char *(*hash_func)(const char *, const char *, gpointer);
-} hash_funcs [] = {
-	HASH_FUNC("type1", create_hash_for_type1),
-	HASH_FUNC("type2", create_hash_for_type2),
-	HASH_FUNC("default", create_hash_for_default)
-};
-#endif
 
 char *md5_hash    (const char *message);
 char *sha256_hash (const char *message);

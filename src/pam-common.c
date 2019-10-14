@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Gooroom <gooroom@gooroom.kr>
+ * Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 #include "pam-common.h"
 
 
+/* Copied from fprintd/pam/pam_fprintd.c:
+ * send_info_msg () */
 gboolean
 send_info_msg (pam_handle_t *pamh, const char *msg)
 {
@@ -42,6 +44,8 @@ send_info_msg (pam_handle_t *pamh, const char *msg)
 	return (pc->conv (1, &msgp, &resp, pc->appdata_ptr) == PAM_SUCCESS);
 }
 
+/* Copied from pam-radius/pam_radius_auth.c:
+ * rad_converse () */
 int
 rad_converse (pam_handle_t *pamh, int msg_style, char *message, char **password)
 { 

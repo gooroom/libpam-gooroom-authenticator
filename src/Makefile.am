@@ -9,7 +9,7 @@ pkglibexec_PROGRAMS = \
 	ecryptfs-rewrap-passphrase-helper
 
 pam_gooroom_la_SOURCES = \
-	nfc_auth.c	\
+	nfc-auth.c	\
 	cleanup.c	\
 	pam-common.c	\
 	common.c	\
