@@ -57,8 +57,11 @@
 
 #define DAY_TO_SEC                (G_TIME_SPAN_DAY / G_TIME_SPAN_SECOND)
 #define DEFAULT_WARNING_DAYS      7 // 7days
+#define DEPT_EXPIRATION_CODE      "GR44"
 #define ACCOUNT_EXPIRATION_CODE   "GR45"
 #define ACCOUNT_LOCKING_CODE      "GR46"
+#define LOGIN_TRIAL_EXCEED_CODE   "GR47"
+#define DUPLICATE_LOGIN_CODE      "GR48"
 #define PASSWORD_EXPIRATION_CODE  "GR49"
 #define AUTH_FAILURE_CODE         "ELM002AUTHF"
 #define VAR_RUN_USER_DIR          "/var/run/user"
@@ -121,8 +124,10 @@ typedef struct _LoginData {
 	char *login_token;
 	char *encrypted_passphrase;
 	char *acct_exp;
+	char *dept_exp;
 
 	int  acct_exp_remain;
+	int  dept_exp_remain;
 	int  pw_max;
 	gint64 pw_lastchg;
 
@@ -592,7 +597,7 @@ parse_login_data (LoginData *login_data, const char *data)
 
 	if (jerr == json_tokener_success) {
 		const char *val;
-		json_object *p_obj[10] = {0,};
+		json_object *p_obj[12] = {0,};
 		json_object *data_obj, *dt_info_obj, *login_info_obj;
 		json_object *pwquality_obj, *dupclients_obj;
 
@@ -612,6 +617,8 @@ parse_login_data (LoginData *login_data, const char *data)
 		p_obj[7] = JSON_OBJECT_GET (login_info_obj, "passphrase");
 		p_obj[8] = JSON_OBJECT_GET (login_info_obj, "expire_dt"); //account expiration
 		p_obj[9] = JSON_OBJECT_GET (login_info_obj, "expire_remain_day");
+		p_obj[10] = JSON_OBJECT_GET (login_info_obj, "dept_expire_dt"); //division expiration
+		p_obj[11] = JSON_OBJECT_GET (login_info_obj, "dept_expire_remain_day");
 
 		val = p_obj[0] ? json_object_get_string (p_obj[0]) : "";
 		login_data->user_id = g_strdup (val);
@@ -646,6 +653,12 @@ parse_login_data (LoginData *login_data, const char *data)
 
 		val = p_obj[9] ? json_object_get_string (p_obj[9]) : "";
 		login_data->acct_exp_remain = (g_str_equal (val, "")) ? 99999 : json_object_get_int (p_obj[9]);
+
+		val = p_obj[10] ? json_object_get_string (p_obj[10]) : "";
+		login_data->dept_exp = g_strdup (val);
+
+		val = p_obj[11] ? json_object_get_string (p_obj[11]) : "";
+		login_data->dept_exp_remain = (g_str_equal (val, "")) ? 99999 : json_object_get_int (p_obj[11]);
 
 		login_data->mounts = get_mounts (dt_info_obj);
 		login_data->pwquality = get_pwquality (pwquality_obj);
@@ -843,6 +856,7 @@ cleanup_data (pam_handle_t *pamh, void *data, int pam_end_status)
 	g_free (ld->login_token);
 	g_free (ld->encrypted_passphrase);
 	g_free (ld->acct_exp);
+	g_free (ld->dept_exp);
 
 	GList *l = NULL;
 	for (l = ld->mounts; l; l = l->next) {
@@ -1467,15 +1481,18 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			retval = PAM_AUTH_ERR;
 		}
 	} else {
-		syslog (LOG_ERR, "pam_gooroom: Authentication is failed [%s]", __FUNCTION__);
-		char *msg = NULL;
+		syslog (LOG_ERR, "pam_gooroom: Authentication is failed : Code [%s]", res_code);
 
+		char *msg = NULL;
 		if (g_str_equal (res_code, AUTH_FAILURE_CODE)) {
 			if (g_str_equal (remaining_retry, "0")) {
 				msg = g_strdup ("Account Locking");
 			} else {
 				msg = g_strdup_printf ("Authentication Failure:%s", remaining_retry);
 			}
+			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
+		} else if (g_str_equal (res_code, DUPLICATE_LOGIN_CODE)) {
+			msg = g_strdup ("Duplicate Login");
 			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, ACCOUNT_LOCKING_CODE)) {
 			msg = g_strdup ("Account Locking");
@@ -1485,6 +1502,12 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, PASSWORD_EXPIRATION_CODE)) {
 			msg = g_strdup ("Password Expiration");
+			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
+		} else if (g_str_equal (res_code, DEPT_EXPIRATION_CODE)) {
+			msg = g_strdup ("Division Expiration");
+			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
+		} else if (g_str_equal (res_code, LOGIN_TRIAL_EXCEED_CODE)) {
+			msg = g_strdup ("Login Trial Exceed");
 			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		}
 
@@ -2369,17 +2392,41 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_NEW_AUTHTOK_REQD;
 	}
 
-	/* Account expiration warning */
-	if (login_data->acct_exp_remain <= DEFAULT_WARNING_DAYS) {
-		char *msg = g_strdup_printf ("Account Expiration Warning:%s:%d",
-                                     login_data->acct_exp,
-                                     login_data->acct_exp_remain);
+
+	/* Password expiration warning for GPMS user */
+
+	/* Account or division expiration warning for GPMS user */
+	if (login_data->acct_exp_remain <= DEFAULT_WARNING_DAYS ||
+        login_data->dept_exp_remain <= DEFAULT_WARNING_DAYS) {
+
+		char *msg = NULL;
+		if (login_data->acct_exp_remain <= login_data->dept_exp_remain) {
+			msg = g_strdup_printf ("Account Expiration Warning:%s:%d",
+                                   login_data->acct_exp,
+                                   login_data->acct_exp_remain);
+		} else {
+			msg = g_strdup_printf ("Division Expiration Warning:%s:%d",
+                                   login_data->dept_exp,
+                                   login_data->dept_exp_remain);
+		}
 		rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		g_free (msg);
 	}
 
+	/* Duplicate login warning for GPMS user */
 	if (g_list_length (login_data->dupclients) > 0) {
-		char *msg = g_strdup ("Duplicate Login Notification");
+		char *msg = NULL;
+		GList *l = g_list_first (login_data->dupclients);
+		DupClient *dupclient = (DupClient *)l->data;
+
+		if (dupclient) {
+			msg = g_strdup_printf ("Duplicate Login Notification:%s:%s:%s:%s",
+                                   dupclient->client_id, dupclient->client_nm,
+                                   dupclient->ip, dupclient->local_ip);
+		} else {
+			msg = g_strdup ("Duplicate Login Notification");
+		}
+
 		rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		g_free (msg);
 	}
