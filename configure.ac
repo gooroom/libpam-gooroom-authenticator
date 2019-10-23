@@ -1,5 +1,7 @@
 AC_INIT([pam-gooroom], [0.2.3])
 AC_CONFIG_HEADER(config.h)
+AC_SUBST(PACKAGE)
+
 
 AM_MAINTAINER_MODE
 
@@ -7,6 +9,15 @@ AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign])
 
 AM_GNU_GETTEXT([external])
+
+AH_BOTTOM([#ifdef ENABLE_NLS
+#include <libintl.h>
+#define _(msgid) dgettext(PACKAGE, msgid)
+#define N_(msgid) msgid
+#else
+#define _(msgid) (msgid)
+#define N_(msgid) msgid
+#endif /* ENABLE_NLS */])
 
 ALL_LINGUAS="en_US ko"
 

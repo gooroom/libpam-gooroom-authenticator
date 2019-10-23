@@ -252,13 +252,11 @@ change_mode_and_owner (const char *file, uid_t uid, uid_t gid)
 {
 	if (!file) return;
 
-	if (chown (file, uid, gid) == -1) {
+	if (chown (file, uid, gid) == -1)
 		return;
-	}
 
-	if (chmod (file, 0600) == -1) {
+	if (chmod (file, 0600) == -1)
 		return;
-	}
 }
 
 static void
@@ -2378,13 +2376,13 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		char *msg = NULL;
 		char *res = NULL;
 
-		msg = g_strdup_printf ("Password Expiration Warning:%d", (int)(leftsec / DAY_TO_SEC) + 1);
+		msg = g_strdup_printf ("Password Maxday Warning:%d", (int)(leftsec / DAY_TO_SEC) + 1);
 		retval = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, &res);
 		g_free (msg);
 
 		if (retval != PAM_SUCCESS || g_strcmp0 (res, "chpasswd_yes") != 0) {
 			g_free (res);
-			return PAM_SUCCESS;
+			goto out;
 		}
 
 		g_free (res);
@@ -2392,9 +2390,7 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_NEW_AUTHTOK_REQD;
 	}
 
-
-	/* Password expiration warning for GPMS user */
-
+out:
 	/* Account or division expiration warning for GPMS user */
 	if (login_data->acct_exp_remain <= DEFAULT_WARNING_DAYS ||
         login_data->dept_exp_remain <= DEFAULT_WARNING_DAYS) {
