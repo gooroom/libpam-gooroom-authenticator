@@ -33,7 +33,6 @@
 
 
 #define ETC_PASSWD           "/etc/passwd"
-#define PROC_SELF_LOGINUID   "/proc/self/loginuid"
 #define PROC_SELF_MOUNTS     "/proc/self/mounts"
 #define USERDEL_COMMAND      "/usr/sbin/userdel"
 #define FUSER_COMMAND        "/bin/fuser"
@@ -126,23 +125,6 @@ get_all_mount_dirs (void)
 
 	return dirs;
 }
-
-//static gboolean
-//is_user_logged_in (uid_t uid)
-//{
-//	gboolean ret = FALSE;
-//	char *contents = NULL;
-//
-//	g_file_get_contents (PROC_SELF_LOGINUID, &contents, NULL, NULL);
-//	if (contents) {
-//		gchar *str_uid = g_strdup_printf ("%d", uid);
-//		if (g_str_equal (contents, str_uid))
-//			ret = TRUE;
-//		g_free (str_uid);
-//	}
-//
-//	return ret;
-//}
 
 static gboolean
 unmount_dirs (const char *homedir, GList *mount_dirs)
@@ -238,9 +220,6 @@ cleanup_account (const char *deluser,
 {
 	struct passwd *entry = getpwnam (deluser);
 	if (entry) {
-//		if (is_user_logged_in (entry->pw_uid))
-//			return;
-
 		if (except_user && g_str_equal (deluser, except_user))
 			return;
 
@@ -280,9 +259,7 @@ cleanup_users (const char *except_user)
 				}
 				char **items = g_strsplit (columns[4], ",", -1);
 				if (g_strv_length (items) > 4) {
-					if (g_str_equal (items[4], GOOROOM_ACCOUNT) ||
-                        g_str_equal (items[4], GOOGLE_ACCOUNT) ||
-                        g_str_equal (items[4], NAVER_ACCOUNT)) {
+					if (g_str_equal (items[4], GOOROOM_ACCOUNT)) {
 						cleanup_account (columns[0], except_user, mount_dirs);
 					}
 				}
@@ -325,6 +302,7 @@ cleanup_function_enabled (void)
 	return ret;
 }
 
+#if 0
 void
 cleanup_cookies (const char *user)
 {
@@ -343,3 +321,4 @@ cleanup_cookies (const char *user)
 		g_free (filename);
 	}
 }
+#endif

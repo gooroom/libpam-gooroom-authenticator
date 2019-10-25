@@ -74,25 +74,12 @@
 
 enum {
 	ACCOUNT_TYPE_LOCAL = 0,
-	ACCOUNT_TYPE_GOOROOM,
-	ACCOUNT_TYPE_GOOGLE,
-	ACCOUNT_TYPE_NAVER
+	ACCOUNT_TYPE_GOOROOM
 };
 
 struct MemoryStruct {
 	char *memory;
 	size_t size;
-};
-
-static int handle_google_token (const char *user, const char *refresh_token);
-static int handle_naver_token  (const char *user, const char *refresh_token);
-
-static struct {
-	int account_type;
-	int (*func)(const char *, const char *);
-} handle_token_funcs[] = {
-	{ ACCOUNT_TYPE_GOOGLE, handle_google_token },
-	{ ACCOUNT_TYPE_NAVER , handle_naver_token  }
 };
 
 typedef struct _PWQuality {
@@ -201,6 +188,7 @@ str_to_sec (const char *date /* yyyy-mm-dd */)
 	return sec;
 }
 
+#if 0
 static gboolean
 registered_gpms (void)
 {
@@ -220,6 +208,7 @@ registered_gpms (void)
 
 	return ret;
 }
+#endif
 
 static void
 make_sure_to_create_save_dir (uid_t uid, uid_t gid)
@@ -670,35 +659,14 @@ get_account_type (const char *user)
 	int account_type = ACCOUNT_TYPE_LOCAL;
 	struct passwd *user_entry = getpwnam (user);
 
-	if (!user_entry) {
-		if (!g_file_test ("/tmp/.gooroom-greeter-cloud-login", G_FILE_TEST_EXISTS))
-			return ACCOUNT_TYPE_GOOROOM;
-
-		char *contents = NULL;
-		g_file_get_contents ("/tmp/.gooroom-greeter-cloud-login", &contents, NULL, NULL);
-		if (contents) {
-			if (g_str_equal (contents, "LOGIN_GOOGLE")) {
-				account_type = ACCOUNT_TYPE_GOOGLE;
-			} else if (g_str_equal (contents, "LOGIN_NAVER")) {
-				account_type = ACCOUNT_TYPE_NAVER;
-			}
-			g_free (contents);
-		} else {
-			account_type = ACCOUNT_TYPE_GOOROOM;
-		}
-
-		return account_type;
-	}
+	if (!user_entry)
+		return ACCOUNT_TYPE_GOOROOM;
 
 	char **tokens = g_strsplit (user_entry->pw_gecos, ",", -1);
 	if (tokens && (g_strv_length (tokens) > 4)) {
 		if (tokens[4]) {
 			if (g_str_equal (tokens[4], GOOROOM_ACCOUNT)) {
 				account_type = ACCOUNT_TYPE_GOOROOM;
-			} else if (g_str_equal (tokens[4], GOOGLE_ACCOUNT)) {
-				account_type = ACCOUNT_TYPE_GOOGLE;
-			} else if (g_str_equal (tokens[4], NAVER_ACCOUNT)) {
-				account_type = ACCOUNT_TYPE_NAVER;
 			} else {
 				account_type = ACCOUNT_TYPE_LOCAL;
 			}
@@ -1669,347 +1637,6 @@ get_value_for (const char *json, const char *property)
 	return id_token;
 }
 
-static char *
-get_email_from_id_token (const char *id_token)
-{
-	int len;
-	char *email = NULL;
-	char **blocks = NULL;
-
-	blocks = g_strsplit (id_token, ".", -1);
-
-	if (blocks && blocks[1]) {
-		char *jwt_json_str = (char *)jwt_b64_decode (blocks[1], &len);
-		if (jwt_json_str) {
-			enum json_tokener_error jerr = json_tokener_success;
-			json_object *root_obj = json_tokener_parse_verbose (jwt_json_str, &jerr);
-
-			if (jerr == json_tokener_success) {
-				json_object *obj;
-				obj = JSON_OBJECT_GET (root_obj, "email");
-				email = obj ? g_strdup (json_object_get_string (obj)) : NULL;
-				json_object_put (root_obj);
-			}
-			g_free (jwt_json_str);
-		}
-	}
-
-	g_strfreev (blocks);
-
-	return email;
-}
-
-static char *
-get_email_from_profile (const char *profile)
-{
-	char *email = NULL;
-
-	enum json_tokener_error jerr = json_tokener_success;
-	json_object *root_obj = json_tokener_parse_verbose (profile, &jerr);
-
-	if (jerr == json_tokener_success) {
-		json_object *obj1, *obj2, *obj3;
-
-		obj1 = JSON_OBJECT_GET (root_obj, "resultcode");
-		obj2 = JSON_OBJECT_GET (root_obj, "response");
-		obj3 = JSON_OBJECT_GET (obj2, "email");
-
-		const char *result = obj1 ? json_object_get_string (obj1) : "";
-
-		if (g_str_equal (result, "00"))
-			email = obj3 ? g_strdup (json_object_get_string (obj3)) : NULL;
-
-		json_object_put (root_obj);
-	}
-
-	return email;
-}
-
-static char*
-refresh_token_with_curl (const char *url, const char *post_fields)
-{
-	CURL *curl;
-	char *retval = NULL;
-	struct MemoryStruct chunk;
-
-	if (!url || !post_fields)
-		return NULL;
-
-	chunk.size = 0;
-	chunk.memory = malloc (1);
-
-	curl_global_init (CURL_GLOBAL_ALL);
-
-	/* get a curl handle */
-	curl = curl_easy_init ();
-
-	if (curl) {
-		CURLcode res = CURLE_OK;
-
-		/* First set the URL that is about to receive our POST. */
-		curl_easy_setopt (curl, CURLOPT_URL, url);
-
-		/* Now specify the POST data */
-		curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
-
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
-		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
-		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
-
-		res = curl_easy_perform (curl);
-
-		curl_easy_cleanup (curl);
-
-		if (res == CURLE_OK) {
-			retval = g_strdup (chunk.memory);
-		} else {
-			syslog (LOG_ERR, "pam_gooroom: Error attempting to request refresh token [%s]", __FUNCTION__);
-		}
-	} else {
-		syslog (LOG_ERR, "pam_gooroom: Error creating curl [%s]", __FUNCTION__);
-	}
-
-	curl_global_cleanup ();
-
-	g_free (chunk.memory);
-
-	return retval;
-}
-
-static char *
-request_profile_with_curl (const char *access_token)
-{
-	CURL *curl;
-	char *retval = NULL;
-	struct MemoryStruct chunk;
-
-/* curl -X GET "https://openapi.naver.com/v1/nid/me" -H "Authorization: [TOKEN_TYPE] [ACCESS_TOKEN]" */
-
-	const char *TOKEN_TYPE = "Bearer";
-	const char *URL = "https://openapi.naver.com/v1/nid/me";
-
-	chunk.size = 0;
-	chunk.memory = malloc (1);
-
-	curl_global_init (CURL_GLOBAL_ALL);
-
-	/* get a curl handle */
-	curl = curl_easy_init ();
-
-	if (curl) {
-		CURLcode res = CURLE_OK;
-
-		char *header = g_strdup_printf ("Authorization: %s %s", TOKEN_TYPE, access_token);
-
-		struct curl_slist *headers = NULL;
-		headers = curl_slist_append (headers, header);
-
-		curl_easy_setopt (curl, CURLOPT_URL, URL);
-		curl_easy_setopt (curl, CURLOPT_CUSTOMREQUEST, "GET");
-		curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
-		curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
-		curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
-		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
-
-		res = curl_easy_perform (curl);
-
-		curl_easy_cleanup (curl);
-		curl_slist_free_all (headers);
-
-		if (res == CURLE_OK) {
-			char *data = g_strdup (chunk.memory);
-			retval = get_email_from_profile (data);
-			g_free (data);
-		} else {
-			syslog (LOG_ERR, "pam_gooroom: Error attempting to request profile for NAVER [%s]", __FUNCTION__);
-		}
-	} else {
-		syslog (LOG_ERR, "pam_gooroom: Error creating curl [%s]", __FUNCTION__);
-	}
-
-	curl_global_cleanup ();
-
-	g_free (chunk.memory);
-
-	return retval;
-}
-
-static int
-handle_google_token (const char *user, const char *refresh_token)
-{
-	int retval = PAM_AUTH_ERR;
-	char *post_fields, *res_json;
-	const char *TOKEN_URI     = "https://www.googleapis.com/oauth2/v4/token";
-	const char *CLIENT_ID     = "530820566685-k3kfkmu92e2shgpouotc6te3cdp5p2lh.apps.googleusercontent.com";
-	const char *CLIENT_SECRET = "b5bJ8shMzOSdJnKNVOT1R5FE";
-	const char *GRANT_TYPE    = "refresh_token";
-
-	post_fields = g_strdup_printf ("client_id=%s&"
-                                   "client_secret=%s&"
-                                   "grant_type=%s&"
-                                   "refresh_token=%s",
-                                   CLIENT_ID,
-                                   CLIENT_SECRET,
-                                   GRANT_TYPE,
-                                   refresh_token);
-
-	res_json = refresh_token_with_curl (TOKEN_URI, post_fields);
-	if (res_json) {
-		char *id_token = get_value_for (res_json, "id_token");
-		if (id_token) {
-			char *email = get_email_from_id_token (id_token);
-			if (email && g_str_equal (email, user)) {
-				retval = PAM_SUCCESS;
-			} else {
-				syslog (LOG_ERR, "pam_gooroom : Error attempting to get email from Google's JWT [%s]", __FUNCTION__);
-			}
-			g_free (email);
-		}
-		g_free (id_token);
-	}
-	g_free (post_fields);
-	g_free (res_json);
-
-	return retval;
-}
-
-static int
-handle_naver_token (const char *user, const char *refresh_token)
-{
-	int retval = PAM_AUTH_ERR;
-	char *post_fields, *res_json;
-
-	const char *TOKEN_URI     = "https://nid.naver.com/oauth2.0/token";
-	const char *CLIENT_ID     = "9Mbn19F_0ouV4f2MHH31";
-	const char *CLIENT_SECRET = "jXdb3tRxdb";
-	const char *GRANT_TYPE    = "refresh_token";
-
-	post_fields = g_strdup_printf ("client_id=%s&"
-                                   "client_secret=%s&"
-                                   "grant_type=%s&"
-                                   "refresh_token=%s",
-                                   CLIENT_ID,
-                                   CLIENT_SECRET,
-                                   GRANT_TYPE,
-                                   refresh_token);
-
-	res_json = refresh_token_with_curl (TOKEN_URI, post_fields);
-	if (res_json) {
-		char *access_token = get_value_for (res_json, "access_token");
-		if (access_token) {
-			char *email = request_profile_with_curl (access_token);
-
-			if (email && g_str_equal (email, user)) {
-				retval = PAM_SUCCESS;
-			} else {
-				syslog (LOG_ERR, "pam_gooroom : Error attempting to get email from NAVER profile [%s]", __FUNCTION__);
-			}
-
-			g_free (email);
-			g_free (access_token);
-		}
-	}
-	g_free (post_fields);
-	g_free (res_json);
-
-	return retval;
-}
-
-static int
-handle_cloud_authenticate (pam_handle_t *pamh, const char *user, int account_type)
-{
-	int retval = PAM_AUTH_ERR;
-	const char *refresh_token;
-
-	if (pam_get_item (pamh, PAM_AUTHTOK, (const void **)&refresh_token) != PAM_SUCCESS)
-		return PAM_AUTH_ERR;
-
-    guint i;
-	for (i = 0; i < G_N_ELEMENTS (handle_token_funcs); i++) {
-		int (*func) (const char *, const char *);
-		func = handle_token_funcs[i].func;
-
-		if (account_type == handle_token_funcs[i].account_type) {
-			retval = func (user, refresh_token);
-			break;
-		}
-	}
-
-	if (retval == PAM_SUCCESS && registered_gpms ()) {
-		CURL *curl;
-		CURLcode res = CURLE_OK;
-		struct MemoryStruct chunk;
-
-		chunk.size = 0;
-		chunk.memory = malloc (1);
-
-		curl_global_init (CURL_GLOBAL_ALL);
-
-		/* get a curl handle */
-		curl = curl_easy_init ();
-
-		if (curl) {
-			const char *service_name;
-
-			if (account_type == ACCOUNT_TYPE_GOOGLE) {
-				service_name = "google";
-			} else if (account_type == ACCOUNT_TYPE_NAVER) {
-				service_name = "naver";
-			}
-
-			char *host = parse_url ();
-			char *url = g_strdup_printf ("https://%s/glm/v1/pam/desktop", host);
-			char *post_fields = g_strdup_printf ("service_name=%s", service_name);
-
-			curl_easy_setopt (curl, CURLOPT_URL, url);
-			curl_easy_setopt (curl, CURLOPT_SSLCERT, GOOROOM_CERT);
-			curl_easy_setopt (curl, CURLOPT_SSLKEY, GOOROOM_PRIVATE_KEY);
-
-			/* Now specify the POST data */
-			curl_easy_setopt (curl, CURLOPT_POSTFIELDS, post_fields);
-
-			/* set timeout */
-			curl_easy_setopt (curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
-			curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *)&chunk);
-			curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
-
-			res = curl_easy_perform (curl);
-			curl_easy_cleanup (curl);
-
-			g_free (url);
-			g_free (post_fields);
-		} else {
-			syslog (LOG_ERR, "pam_gooroom: Error creating curl [%s]", __FUNCTION__);
-		}
-
-		curl_global_cleanup ();
-
-		if (res != CURLE_OK) {
-			syslog (LOG_ERR, "pam_gooroom: Error attempting to request desktop information [%s]", __FUNCTION__);
-			goto done;
-		}
-
-		char *data = g_strdup (chunk.memory);
-		if (!data) {
-			goto done;
-		}
-
-		struct passwd *user_entry = getpwnam (user);
-		if (user_entry) {
-			/* make sure to create /var/run/user/$(uid)/gooroom directory */
-			make_sure_to_create_save_dir (user_entry->pw_uid, user_entry->pw_gid);
-			save_login_data (data, user_entry->pw_uid, user_entry->pw_gid);
-		}
-
-	done:
-		g_free (chunk.memory);
-		g_free (data);
-	}
-
-
-	return retval;
-}
-
 static int 
 handle_gooroom_authenticate (pam_handle_t *pamh, const char *user)
 {
@@ -2102,8 +1729,7 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_USER_UNKNOWN;
 	}
 
-	account_type = get_account_type (user);
-	switch (account_type)
+	switch (get_account_type (user))
 	{
 		case ACCOUNT_TYPE_LOCAL:
 			retval = PAM_USER_UNKNOWN;
@@ -2111,11 +1737,6 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 		case ACCOUNT_TYPE_GOOROOM:
 			retval = handle_gooroom_authenticate (pamh, user);
-		break;
-
-		case ACCOUNT_TYPE_NAVER:
-		case ACCOUNT_TYPE_GOOGLE:
-			retval = handle_cloud_authenticate (pamh, user, account_type);
 		break;
 
 		default:
@@ -2433,8 +2054,8 @@ out:
 PAM_EXTERN int
 pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	int CLEANUP = 0;
 	const char *user;
+	int account_type, cleanup = 0;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
 		syslog (LOG_ERR, "pam_gooroom: Couldn't get user name [%s]", __FUNCTION__);
@@ -2444,21 +2065,23 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	/* step through arguments */
 	for (; argc-- > 0; ++argv) {
 		if (!strcmp (*argv, "cleanup")) {
-			CLEANUP++;
+			cleanup++;
 			break;
 		}
 	}
 
-    if (cleanup_function_enabled ())
-        CLEANUP++;
+	if (cleanup_function_enabled ())
+		cleanup++;
 
-    if (CLEANUP > 0)
-        cleanup_users (user);
+	if (cleanup > 0)
+		cleanup_users (user);
 
-	if (get_account_type (user) == ACCOUNT_TYPE_LOCAL)
+	account_type = get_account_type (user);
+
+	if (account_type == ACCOUNT_TYPE_LOCAL)
 		delete_config_files (user);
 
-	if (get_account_type (user) != ACCOUNT_TYPE_GOOROOM )
+	if (account_type != ACCOUNT_TYPE_GOOROOM )
 		restore_pwquality_file ();
 
 	return PAM_SUCCESS;
@@ -2467,7 +2090,7 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN int
 pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	int CLEANUP = 0;
+	int cleanup = 0;
 	const char *user;
 
 	if (pam_get_user (pamh, &user, NULL) != PAM_SUCCESS) {
@@ -2478,21 +2101,15 @@ pam_sm_close_session (pam_handle_t *pamh, int flags, int argc, const char **argv
 	/* step through arguments */
 	for (; argc-- > 0; ++argv) {
 		if (!strcmp (*argv, "cleanup")) {
-			CLEANUP++;
+			cleanup++;
 			break;
 		}
 	}
 
 	if (cleanup_function_enabled ())
-		CLEANUP++;
+		cleanup++;
 
-	int account_type = get_account_type (user);
-
-	if (account_type == ACCOUNT_TYPE_GOOGLE ||
-        account_type == ACCOUNT_TYPE_NAVER) {
-		if (CLEANUP == 0)
-			cleanup_cookies (user);
-	} else if (account_type == ACCOUNT_TYPE_GOOROOM) {
+	if (get_account_type (user) == ACCOUNT_TYPE_GOOROOM) {
 		char *url = NULL;
 		LoginData *login_data = NULL;
 
@@ -2519,7 +2136,7 @@ out:
 	delete_config_files (user);
 	restore_pwquality_file ();
 
-	if (CLEANUP > 0)
+	if (cleanup > 0)
 		cleanup_users (NULL);
 
 	return PAM_SUCCESS;
