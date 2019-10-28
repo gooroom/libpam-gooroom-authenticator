@@ -301,24 +301,3 @@ cleanup_function_enabled (void)
 
 	return ret;
 }
-
-#if 0
-void
-cleanup_cookies (const char *user)
-{
-	struct passwd *entry = getpwnam (user);
-
-	if (entry) {
-		char *filename = g_build_filename (entry->pw_dir,
-                                           ".config/chromium/Default/Cookies", NULL);
-
-		if (g_file_test (filename, G_FILE_TEST_EXISTS)) {
-			if (g_remove (filename) == -1) {
-				syslog (LOG_INFO, "pam_gooroom: Error attempting to clean up user credential [%s]", __FUNCTION__);
-			}
-		}
-
-		g_free (filename);
-	}
-}
-#endif

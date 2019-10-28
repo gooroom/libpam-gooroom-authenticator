@@ -112,9 +112,11 @@ typedef struct _LoginData {
 	char *encrypted_passphrase;
 	char *acct_exp;
 	char *dept_exp;
+	char *pass_exp;
 
 	int  acct_exp_remain;
 	int  dept_exp_remain;
+	int  pass_exp_remain;
 	int  pw_max;
 	gint64 pw_lastchg;
 
@@ -584,7 +586,7 @@ parse_login_data (LoginData *login_data, const char *data)
 
 	if (jerr == json_tokener_success) {
 		const char *val;
-		json_object *p_obj[12] = {0,};
+		json_object *p_obj[14] = {0,};
 		json_object *data_obj, *dt_info_obj, *login_info_obj;
 		json_object *pwquality_obj, *dupclients_obj;
 
@@ -606,6 +608,8 @@ parse_login_data (LoginData *login_data, const char *data)
 		p_obj[9] = JSON_OBJECT_GET (login_info_obj, "expire_remain_day");
 		p_obj[10] = JSON_OBJECT_GET (login_info_obj, "dept_expire_dt"); //division expiration
 		p_obj[11] = JSON_OBJECT_GET (login_info_obj, "dept_expire_remain_day");
+		p_obj[12] = JSON_OBJECT_GET (login_info_obj, "pwd_expire_dt"); //password expiration
+		p_obj[13] = JSON_OBJECT_GET (login_info_obj, "pwd_expire_remain_day");
 
 		val = p_obj[0] ? json_object_get_string (p_obj[0]) : "";
 		login_data->user_id = g_strdup (val);
@@ -646,6 +650,12 @@ parse_login_data (LoginData *login_data, const char *data)
 
 		val = p_obj[11] ? json_object_get_string (p_obj[11]) : "";
 		login_data->dept_exp_remain = (g_str_equal (val, "")) ? 99999 : json_object_get_int (p_obj[11]);
+
+		val = p_obj[12] ? json_object_get_string (p_obj[12]) : "";
+		login_data->pass_exp = g_strdup (val);
+
+		val = p_obj[13] ? json_object_get_string (p_obj[13]) : "";
+		login_data->pass_exp_remain = (g_str_equal (val, "")) ? 99999 : json_object_get_int (p_obj[13]);
 
 		login_data->mounts = get_mounts (dt_info_obj);
 		login_data->pwquality = get_pwquality (pwquality_obj);
@@ -1972,12 +1982,21 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_USER_UNKNOWN;
 	}
 
+	/* temporary password */
 	if (login_data->pw_tmp) {
 		syslog (LOG_NOTICE, "pam_gooroom : Temporarily issued password for %s", user);
 		pam_prompt (pamh, PAM_ERROR_MSG, NULL, "Temporary Password");
 		return PAM_NEW_AUTHTOK_REQD;
 	}
 
+	/* password already expired */
+	if (login_data->pass_exp_remain < 0) {
+		syslog (LOG_NOTICE, "pam_gooroom : expired password for user %s", user);
+		pam_prompt (pamh, PAM_ERROR_MSG, NULL, "You are required to change your password immediately");
+		return PAM_NEW_AUTHTOK_REQD;
+	}
+
+	/* password changing cycle expired */
 	if (login_data->pw_lastchg == 0) {
 		syslog (LOG_NOTICE, "pam_gooroom : expired password for user %s", user);
 		pam_prompt (pamh, PAM_ERROR_MSG, NULL, "You are required to change your password immediately");
@@ -2012,19 +2031,25 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 out:
-	/* Account or division expiration warning for GPMS user */
-	if (login_data->acct_exp_remain <= DEFAULT_WARNING_DAYS ||
+	/* Password or Account or Division expiration warning for GPMS user */
+	if (login_data->pass_exp_remain <= DEFAULT_WARNING_DAYS ||
+        login_data->acct_exp_remain <= DEFAULT_WARNING_DAYS ||
         login_data->dept_exp_remain <= DEFAULT_WARNING_DAYS) {
 
 		char *msg = NULL;
-		if (login_data->acct_exp_remain <= login_data->dept_exp_remain) {
+		if (login_data->acct_exp_remain < login_data->dept_exp_remain &&
+            login_data->acct_exp_remain < login_data->pass_exp_remain) {
 			msg = g_strdup_printf ("Account Expiration Warning:%s:%d",
                                    login_data->acct_exp,
                                    login_data->acct_exp_remain);
-		} else {
+		} else if (login_data->dept_exp_remain < login_data->pass_exp_remain) {
 			msg = g_strdup_printf ("Division Expiration Warning:%s:%d",
                                    login_data->dept_exp,
                                    login_data->dept_exp_remain);
+		} else {
+			msg = g_strdup_printf ("Password Expiration Warning:%s:%d",
+                                   login_data->pass_exp,
+                                   login_data->pass_exp_remain);
 		}
 		rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		g_free (msg);
