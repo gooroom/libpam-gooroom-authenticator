@@ -26,6 +26,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/fsuid.h>
+#include <fcntl.h>
 #include <grp.h>
 #include <locale.h>
 #include <shadow.h>
@@ -190,64 +191,50 @@ str_to_sec (const char *date /* yyyy-mm-dd */)
 	return sec;
 }
 
-#if 0
-static gboolean
-registered_gpms (void)
-{
-	gchar *glm = NULL;
-	gboolean ret = FALSE;
-	GKeyFile *keyfile = NULL;
-
-	keyfile = g_key_file_new ();
-	if (g_key_file_load_from_file (keyfile, GCSR_CONF, G_KEY_FILE_KEEP_COMMENTS, NULL)) {
-		glm  = g_key_file_get_string (keyfile, "domain", "glm", NULL);
-	}
-
-	ret = (glm != NULL) ? TRUE : FALSE;
-
-	g_free (glm);
-	g_key_file_free (keyfile);
-
-	return ret;
-}
-#endif
-
 static void
-make_sure_to_create_save_dir (uid_t uid, uid_t gid)
+make_sure_to_create_save_dir (uid_t uid, gid_t gid)
 {
 	char *dir = NULL;
+	char *cmd = NULL;
 
 	dir = g_strdup_printf ("%s/%d/gooroom", VAR_RUN_USER_DIR, uid);
 
 	if (!g_file_test (dir, G_FILE_TEST_EXISTS)) {
 		g_mkdir_with_parents (dir, 0700);
-
-		g_free (dir);
-
-		dir = g_strdup_printf ("%s/%d", VAR_RUN_USER_DIR, uid);
-		if (chown (dir, uid, gid) == -1)
-			syslog (LOG_ERR, "pam_gooroom: Error chown [%s]", dir);
-
-		g_free (dir);
-
-		dir = g_strdup_printf ("%s/%d/gooroom", VAR_RUN_USER_DIR, uid);
-		if (chown (dir, uid, gid) == -1)
-			syslog (LOG_ERR, "pam_gooroom: Error chown [%s]", __FUNCTION__);
-
-		g_free (dir);
 	}
+
+	cmd = g_strdup_printf ("/bin/chown -R %d:%d %s/%d", uid, gid, VAR_RUN_USER_DIR, uid);
+
+	if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL))
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to change owner [%s/%d]", VAR_RUN_USER_DIR, uid);
+
+	g_free (dir);
+	g_free (cmd);
 }
 
 static void
 change_mode_and_owner (const char *file, uid_t uid, uid_t gid)
 {
+	int fd = -1;
+
 	if (!file) return;
 
-	if (chown (file, uid, gid) == -1)
-		return;
+	fd = open (file, O_WRONLY);
+	if (fchown (fd, uid, gid) == -1) {
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to change owner [%s]", file);
+		goto failed;
+	}
 
-	if (chmod (file, 0600) == -1)
-		return;
+	close (fd);
+
+	fd = open (file, O_WRONLY);
+	if (fchmod (fd, 0600) == -1) {
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to change mode [%s]", file);
+		goto failed;
+	}
+
+failed:
+	close (fd);
 }
 
 static void
