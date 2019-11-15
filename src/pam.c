@@ -199,9 +199,10 @@ make_sure_to_create_save_dir (uid_t uid, gid_t gid)
 
 	dir = g_strdup_printf ("%s/%d/gooroom", VAR_RUN_USER_DIR, uid);
 
-	if (!g_file_test (dir, G_FILE_TEST_EXISTS)) {
-		g_mkdir_with_parents (dir, 0700);
-	}
+	g_mkdir_with_parents (dir, 0700);
+
+	if (!g_file_test (dir, G_FILE_TEST_EXISTS))
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to create directory: [%s]", dir);
 
 	cmd = g_strdup_printf ("/bin/chown -R %d:%d %s/%d", uid, gid, VAR_RUN_USER_DIR, uid);
 
@@ -242,14 +243,13 @@ delete_config_files (const char *user)
 {
 	struct passwd *user_entry = getpwnam (user);
 	if (user_entry) {
-		char *grm_user = g_strdup_printf ("%s/%d/gooroom/%s", VAR_RUN_USER_DIR, user_entry->pw_uid, GRM_USER);
+		char *cmd = g_strdup_printf ("/bin/rm -rf %s/%d/gooroom", VAR_RUN_USER_DIR, user_entry->pw_uid);
 
-		/* delete /var/run/user/$(uid)/gooroom/.grm-user */
-		if (g_file_test (grm_user, G_FILE_TEST_EXISTS)) {
-			g_remove (grm_user);
+		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL)) {
+			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [%s/%d/gooroom]", VAR_RUN_USER_DIR, user_entry->pw_uid);
 		}
 
-		g_free (grm_user);
+		g_free (cmd);
 	}
 }
 
@@ -336,8 +336,11 @@ save_login_data (char *data, uid_t uid, uid_t gid)
 {
 	char *grm_user = g_strdup_printf ("%s/%d/gooroom/%s", VAR_RUN_USER_DIR, uid, GRM_USER);
 
-	g_file_set_contents (grm_user, data, -1, NULL);
-	change_mode_and_owner (grm_user, uid, gid);
+	if (g_file_set_contents (grm_user, data, -1, NULL)) {
+		change_mode_and_owner (grm_user, uid, gid);
+	} else {
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to save data to [%s]", grm_user);
+	}
 	g_free (grm_user);
 }
 
@@ -1453,28 +1456,25 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			} else {
 				msg = g_strdup_printf ("Authentication Failure:%s", remaining_retry);
 			}
-			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, DUPLICATE_LOGIN_CODE)) {
 			msg = g_strdup ("Duplicate Login");
-			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, ACCOUNT_LOCKING_CODE)) {
 			msg = g_strdup ("Account Locking");
-			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, ACCOUNT_EXPIRATION_CODE)) {
 			msg = g_strdup ("Account Expiration");
-			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, PASSWORD_EXPIRATION_CODE)) {
 			msg = g_strdup ("Password Expiration");
-			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, DEPT_EXPIRATION_CODE)) {
 			msg = g_strdup ("Division Expiration");
-			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		} else if (g_str_equal (res_code, LOGIN_TRIAL_EXCEED_CODE)) {
 			msg = g_strdup ("Login Trial Exceed");
-			rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
 		}
 
-		g_free (msg);
+		if (msg) {
+			pam_prompt (pamh, PAM_ERROR_MSG, NULL, "%s", msg);
+			g_free (msg);
+		}
+
 		retval = PAM_AUTH_ERR;
 	}
 
@@ -1880,7 +1880,7 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		}
 
 		if (oldpassword == NULL) {
-			rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, _("Current password: "), &oldpassword);
+			rc = pam_prompt (pamh, PAM_PROMPT_ECHO_OFF, &oldpassword, "%s", _("Current password: "));
 
 			if (rc != PAM_SUCCESS) {
 				PAM_FORGET (oldpassword);
@@ -1911,12 +1911,12 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		if (!new_password || !chk_password) {
 			/* loop, trying to get matching new passwords */
 			while (attempts++ < 3) {
-				rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, _("New password: "), &new_password);
+				rc = pam_prompt (pamh, PAM_PROMPT_ECHO_OFF, &new_password, "%s", _("New password: "));
 				if (rc != PAM_SUCCESS) {
 					goto error;
 				}
 
-				rc = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, _("Retype new password: "), &chk_password);
+				rc = pam_prompt (pamh, PAM_PROMPT_ECHO_OFF, &chk_password, "%s", _("Retype new password: "));
 				if (rc != PAM_SUCCESS) {
 					goto error;
 				}
@@ -1953,6 +1953,7 @@ error:
 PAM_EXTERN int
 pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
+	int retval;
 	const char *user;
 	LoginData *login_data = NULL;
 
@@ -1999,12 +2000,11 @@ pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if (leftsec > 0 && leftsec <= DEFAULT_WARNING_DAYS * DAY_TO_SEC) {
-		int retval;
 		char *msg = NULL;
 		char *res = NULL;
 
 		msg = g_strdup_printf ("Password Maxday Warning:%d", (int)(leftsec / DAY_TO_SEC) + 1);
-		retval = rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, &res);
+		retval = pam_prompt (pamh, PAM_PROMPT_ECHO_OFF, &res, "%s", msg);
 		g_free (msg);
 
 		if (retval != PAM_SUCCESS || g_strcmp0 (res, "chpasswd_yes") != 0) {
@@ -2038,7 +2038,7 @@ out:
                                    login_data->pass_exp,
                                    login_data->pass_exp_remain);
 		}
-		rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
+		pam_prompt (pamh, PAM_PROMPT_ECHO_OFF, NULL, "%s", msg);
 		g_free (msg);
 	}
 
@@ -2055,8 +2055,7 @@ out:
 		} else {
 			msg = g_strdup ("Duplicate Login Notification");
 		}
-
-		rad_converse (pamh, PAM_PROMPT_ECHO_OFF, msg, NULL);
+		pam_prompt (pamh, PAM_PROMPT_ECHO_OFF, NULL, "%s", msg);
 		g_free (msg);
 	}
 

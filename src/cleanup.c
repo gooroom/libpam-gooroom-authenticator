@@ -58,7 +58,7 @@ delete_file_recursively (GFile *file)
 		success = g_file_delete (file, NULL, &error);
 		if (success || !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_NOT_EMPTY)) {
 			if (!success) {
-				syslog (LOG_ERR, "pam_gooroom: Error attempting to delete ecryptfs directory: [%s]", error->message);
+				syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [%s]", error->message);
 			}
 			break;
 		}
