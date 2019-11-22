@@ -65,7 +65,6 @@
 #define DUPLICATE_LOGIN_CODE      "GR48"
 #define PASSWORD_EXPIRATION_CODE  "GR49"
 #define AUTH_FAILURE_CODE         "ELM002AUTHF"
-#define VAR_RUN_USER_DIR          "/var/run/user"
 #define PAM_MOUNT_CONF_PATH       "/etc/security/pam_mount.conf.xml"
 #define PWQUALITY_CONF            "/etc/security/pwquality.conf"
 #define PWQUALITY_CONF_ORG        "/etc/security/pwquality.conf.org"
@@ -75,7 +74,9 @@
 
 enum {
 	ACCOUNT_TYPE_LOCAL = 0,
-	ACCOUNT_TYPE_GOOROOM
+	ACCOUNT_TYPE_GOOROOM,
+	ACCOUNT_TYPE_GOOGLE,
+	ACCOUNT_TYPE_NAVER
 };
 
 struct MemoryStruct {
@@ -191,48 +192,48 @@ str_to_sec (const char *date /* yyyy-mm-dd */)
 	return sec;
 }
 
-static void
-make_sure_to_create_save_dir (uid_t uid, gid_t gid)
+static gboolean
+make_sure_to_create_save_dir (const char *homedir)
 {
 	char *dir = NULL;
-	char *cmd = NULL;
+	gboolean ret = TRUE;
 
-	dir = g_strdup_printf ("%s/%d/gooroom", VAR_RUN_USER_DIR, uid);
+	dir = g_strdup_printf ("%s/.gooroom", homedir);
 
 	g_mkdir_with_parents (dir, 0700);
 
-	if (!g_file_test (dir, G_FILE_TEST_EXISTS))
+	if (!g_file_test (dir, G_FILE_TEST_EXISTS)) {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to create directory: [%s]", dir);
-
-	cmd = g_strdup_printf ("/bin/chown -R %d:%d %s/%d", uid, gid, VAR_RUN_USER_DIR, uid);
-
-	if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL))
-		syslog (LOG_ERR, "pam_gooroom: Error attempting to change owner [%s/%d]", VAR_RUN_USER_DIR, uid);
+		ret = FALSE;
+	}
 
 	g_free (dir);
-	g_free (cmd);
+
+	return ret;
 }
 
 static void
-change_mode_and_owner (const char *file, uid_t uid, uid_t gid)
+change_mode_and_owner (uid_t uid, uid_t gid, const char *file)
 {
 	int fd = -1;
+	char *cmd = NULL, *dir = NULL;
 
 	if (!file) return;
-
-	fd = open (file, O_WRONLY);
-	if (fchown (fd, uid, gid) == -1) {
-		syslog (LOG_ERR, "pam_gooroom: Error attempting to change owner [%s]", file);
-		goto failed;
-	}
-
-	close (fd);
 
 	fd = open (file, O_WRONLY);
 	if (fchmod (fd, 0600) == -1) {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to change mode [%s]", file);
 		goto failed;
 	}
+
+	dir = g_path_get_dirname (file);
+	cmd = g_strdup_printf ("/bin/chown -R %d:%d %s", uid, gid, dir);
+
+	if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL))
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to change owner [%s]", dir);
+
+	g_free (cmd);
+	g_free (dir);
 
 failed:
 	close (fd);
@@ -243,10 +244,10 @@ delete_config_files (const char *user)
 {
 	struct passwd *user_entry = getpwnam (user);
 	if (user_entry) {
-		char *cmd = g_strdup_printf ("/bin/rm -rf %s/%d/gooroom", VAR_RUN_USER_DIR, user_entry->pw_uid);
+		char *cmd = g_strdup_printf ("/bin/rm -rf %s/.gooroom", user_entry->pw_dir);
 
 		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL)) {
-			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [%s/%d/gooroom]", VAR_RUN_USER_DIR, user_entry->pw_uid);
+			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [%s/.gooroom]", user_entry->pw_dir);
 		}
 
 		g_free (cmd);
@@ -274,70 +275,13 @@ restore_pwquality_file (void)
 	}
 }
 
-static gboolean
-login_data_exists (const char *user)
-{
-	gboolean ret = FALSE;
-
-	struct passwd *user_entry = getpwnam (user);
-	if (user_entry) {
-		char *grm_user = g_strdup_printf ("%s/%d/gooroom/%s", VAR_RUN_USER_DIR, user_entry->pw_uid, GRM_USER);
-		ret = g_file_test (grm_user, G_FILE_TEST_EXISTS);
-		g_free (grm_user);
-	}
-
-	return ret;
-}
-
-static char *
-get_login_data (const char *user)
-{
-	char *data = NULL;
-
-	struct passwd *user_entry = getpwnam (user);
-	if (user_entry) {
-		char *grm_user = g_strdup_printf ("%s/%d/gooroom/%s", VAR_RUN_USER_DIR, user_entry->pw_uid, GRM_USER);
-		if (g_file_test (grm_user, G_FILE_TEST_EXISTS))
-			g_file_get_contents (grm_user, &data, NULL, NULL);
-		g_free (grm_user);
-	}
-
-	return data;
-}
-
-static char *
-get_login_token (const char *user)
-{
-	char *data = NULL;
-	char *token = NULL;
-
-	data = get_login_data (user);
-	if (data) {
-		enum json_tokener_error jerr = json_tokener_success;
-		json_object *root_obj = json_tokener_parse_verbose (data, &jerr);
-		if (jerr == json_tokener_success) {
-			json_object *obj1, *obj2, *obj3;
-
-			obj1 = JSON_OBJECT_GET (root_obj, "data");
-			obj2 = JSON_OBJECT_GET (obj1, "loginInfo");
-			obj3 = JSON_OBJECT_GET (obj2, "login_token");
-
-			token = obj3 ? g_strdup (json_object_get_string (obj3)) : NULL;
-
-			json_object_put (root_obj);
-		}
-	}
-
-	return token;
-}
-
 static void
-save_login_data (char *data, uid_t uid, uid_t gid)
+save_login_data (struct passwd *user_entry, const char *data)
 {
-	char *grm_user = g_strdup_printf ("%s/%d/gooroom/%s", VAR_RUN_USER_DIR, uid, GRM_USER);
+	char *grm_user = g_strdup_printf ("%s/.gooroom/%s", user_entry->pw_dir, GRM_USER);
 
 	if (g_file_set_contents (grm_user, data, -1, NULL)) {
-		change_mode_and_owner (grm_user, uid, gid);
+		change_mode_and_owner (user_entry->pw_uid, user_entry->pw_gid, grm_user);
 	} else {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to save data to [%s]", grm_user);
 	}
@@ -662,11 +606,35 @@ get_account_type (const char *user)
 	if (!user_entry)
 		return ACCOUNT_TYPE_GOOROOM;
 
+	if (!user_entry) {
+		if (!g_file_test ("/tmp/.gooroom-greeter-cloud-login", G_FILE_TEST_EXISTS))
+			return ACCOUNT_TYPE_GOOROOM;
+
+		char *contents = NULL;
+		g_file_get_contents ("/tmp/.gooroom-greeter-cloud-login", &contents, NULL, NULL);
+		if (contents) {
+			if (g_str_equal (contents, "LOGIN_GOOGLE")) {
+				account_type = ACCOUNT_TYPE_GOOGLE;
+			} else if (g_str_equal (contents, "LOGIN_NAVER")) {
+				account_type = ACCOUNT_TYPE_NAVER;
+			}
+		} else {
+			account_type = ACCOUNT_TYPE_GOOROOM;
+		}
+		g_free (contents);
+
+		return account_type;
+	}
+
 	char **tokens = g_strsplit (user_entry->pw_gecos, ",", -1);
 	if (tokens && (g_strv_length (tokens) > 4)) {
 		if (tokens[4]) {
 			if (g_str_equal (tokens[4], GOOROOM_ACCOUNT)) {
 				account_type = ACCOUNT_TYPE_GOOROOM;
+			} else if (g_str_equal (tokens[4], GOOGLE_ACCOUNT)) {
+				account_type = ACCOUNT_TYPE_GOOGLE;
+			} else if (g_str_equal (tokens[4], NAVER_ACCOUNT)) {
+				account_type = ACCOUNT_TYPE_NAVER;
 			} else {
 				account_type = ACCOUNT_TYPE_LOCAL;
 			}
@@ -810,6 +778,12 @@ is_auth_ok (char *json_data, char **res_code, char **remaining_retry)
 	}
 
 	return ret;
+}
+
+static void
+cleanup_raw_data (pam_handle_t *pamh, void *data, int pam_end_status)
+{
+	g_free (data);
 }
 
 static void
@@ -1419,6 +1393,8 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		syslog (LOG_DEBUG, "pam_gooroom: Received Data: %s", data);
 	}
 
+	pam_set_data (pamh, "login_raw_data", g_strdup (data), cleanup_raw_data);
+
 	if (is_auth_ok (data, &res_code, &remaining_retry)) {
 		LoginData *login_data = g_new0 (LoginData, 1);
 
@@ -1434,13 +1410,6 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			/* for pam_pwquality */
 			create_config_for_pam_pwquality (login_data->pwquality);
 
-			/* save data file to /var/run/user/$(uid)/gooroom/.grm-user */
-			struct passwd *user_entry = getpwnam (user);
-			if (user_entry) {
-				/* make sure to create /var/run/user/$(uid)/gooroom directory */
-				make_sure_to_create_save_dir (user_entry->pw_uid, user_entry->pw_gid);
-				save_login_data (data, user_entry->pw_uid, user_entry->pw_gid);
-			}
 			retval = PAM_SUCCESS;
 		} else {
 			syslog (LOG_ERR, "pam_gooroom: Error attempting to create account [%s]", __FUNCTION__);
@@ -1728,16 +1697,12 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	switch (get_account_type (user))
 	{
-		case ACCOUNT_TYPE_LOCAL:
-			retval = PAM_USER_UNKNOWN;
-		break;
-
 		case ACCOUNT_TYPE_GOOROOM:
 			retval = handle_gooroom_authenticate (pamh, user);
 		break;
 
 		default:
-			retval = PAM_AUTH_ERR;
+			retval = PAM_USER_UNKNOWN;
 		break;
 	}
 
@@ -1815,16 +1780,19 @@ static gboolean
 change_online_password (pam_handle_t *pamh, const char *user, const char *new_passwd)
 {
 	char *url = NULL;
-	char *token = NULL;
-	char *data = NULL;
+	LoginData *login_data;
 	const char *old_passwd;
 	gboolean ret = FALSE;
 
 	if (pam_get_item (pamh, PAM_OLDAUTHTOK ,(const void**)&old_passwd) != PAM_SUCCESS)
 		return FALSE;
 
-	token = get_login_token (user);
-	if (!token) {
+	if (pam_get_data (pamh, "login_data", (const void**)&login_data) != PAM_SUCCESS) {
+		syslog (LOG_ERR, "pam_gooroom: Error attempting to get login data [%s]", __FUNCTION__);
+		return FALSE;
+	}
+
+	if (!login_data || !login_data->login_token) {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to get login token [%s]", __FUNCTION__);
 		return FALSE;
 	}
@@ -1832,13 +1800,11 @@ change_online_password (pam_handle_t *pamh, const char *user, const char *new_pa
 	url = parse_url ();
 	if (!url) {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to get online url [%s]", __FUNCTION__);
-		g_free (token);
 		return FALSE;
 	}
 
-	ret = request_to_change_password (user, url, token, old_passwd, new_passwd);
+	ret = request_to_change_password (user, url, login_data->login_token, old_passwd, new_passwd);
 
-	g_free (token);
 	g_free (url);
 
 	return ret;
@@ -1866,11 +1832,6 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	if (get_account_type (user) != ACCOUNT_TYPE_GOOROOM)
 		return PAM_USER_UNKNOWN;
-
-	if (!login_data_exists (user)) {
-		syslog (LOG_ERR, "pam_gooroom: Do not have permission to change password [%s]", __FUNCTION__);
-		return PAM_PERM_DENIED;
-	}
 
 	if (flags & PAM_PRELIM_CHECK) {
 		char *oldpassword = NULL;
@@ -2089,10 +2050,24 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 	account_type = get_account_type (user);
 
-	if (account_type == ACCOUNT_TYPE_LOCAL)
+	if (account_type == ACCOUNT_TYPE_LOCAL) {
 		delete_config_files (user);
+	} else {
+		const char *login_raw_data;
 
-	if (account_type != ACCOUNT_TYPE_GOOROOM )
+		if (pam_get_data (pamh, "login_raw_data", (const void**)&login_raw_data) != PAM_SUCCESS)
+			return PAM_SUCCESS;
+
+		struct passwd *user_entry = getpwnam (user);
+		if (user_entry) {
+			if (make_sure_to_create_save_dir (user_entry->pw_dir)) {
+				/* save data to ~/.gooroom/.grm-user */
+				save_login_data (user_entry, login_raw_data);
+			}
+		}
+	}
+
+	if (account_type != ACCOUNT_TYPE_GOOROOM)
 		restore_pwquality_file ();
 
 	return PAM_SUCCESS;

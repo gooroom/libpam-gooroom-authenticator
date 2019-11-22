@@ -32,6 +32,8 @@
 
 #define GRM_USER                        ".grm-user"
 #define GOOROOM_ACCOUNT                 "gooroom-account"
+#define GOOGLE_ACCOUNT                  "google-account"
+#define NAVER_ACCOUNT                   "naver-account"
 #define GOOROOM_CERT                    "/etc/ssl/certs/gooroom_client.crt"
 #define GOOROOM_PRIVATE_KEY             "/etc/ssl/private/gooroom_client.key"
 #define GOOROOM_MANAGEMENT_SERVER_CONF  "/etc/gooroom/gooroom-client-server-register/gcsr.conf"
