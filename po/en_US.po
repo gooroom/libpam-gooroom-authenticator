@@ -1,5 +1,5 @@
 # English(United Kingdom) translations for pam-gooroom package.
-# Copyright (C) 2015-2017 pam-gooroom'S COPYRIGHT HOLDER
+# Copyright (C) 2015-2019 pam-gooroom'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the pam-gooroom package.
 #
 #, fuzzy
