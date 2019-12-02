@@ -1,3 +1,32 @@
+pam-gooroom (0.3.1+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [571629f4] Update to modify build error
+  * [c9791ef2] Adding a dependency package (CURL)
+  * [1faf6acf] Fixed pwquality.conf configuration bug
+  * [f2c61f19] Removed code to send commands to gooroom agent
+  * [60dedfbc] [Bug:1267]Modify pam-prompt message when changing password
+  * [18ad2b1a] Error handling when setting account expiration
+  * [1a08d13a] Update prompt message when changing password
+
+  [ user ]
+  * [795834d2] Import shortcut info from GPMS when cloud login
+  * [e88096fb] Password expiration handling for GPMS Users
+  * [db236ba5] Update sources regarding copyright
+  * [b5d2b476] Added organization expiration feature
+  * [c3a47e3e] Added organization expiration feature #2
+  * [bca09c04] Removed cloud login features
+  * [82869a14] Empty commit for package build
+  * [afdb4156] Added feature to handle password expiration
+  * [341edbb5] Replace chown and chmod API for security reasons
+  * [5d03200f] Cleanup source
+  * [3467028d] Change directory to store .grm-user file
+  * [542865d5] Modify copyright
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Mon, 02 Dec 2019 13:06:18 +0900
+
 pam-gooroom (0.2.3+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
