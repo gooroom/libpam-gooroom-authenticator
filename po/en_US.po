@@ -1,12 +1,12 @@
 # English translations for libpam-gooroom-authenticator package.
-# Copyright (C) 2015-2017 libpam-gooroom-authenticator'S COPYRIGHT HOLDER
+# Copyright (C) 2015-2019 libpam-gooroom-authenticator'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the libpam-gooroom-authenticator package.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: libpam-gooroom-authenticator 0.1.0\n"
+"Project-Id-Version: libpam-gooroom-authenticator 0.2.3\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-03-19 17:03+0900\n"
+"POT-Creation-Date: 2019-12-04 20:15+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: English\n"
 "Language: en_US\n"
@@ -15,31 +15,31 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:1116
+#: src/pam.c:1122
 msgid "Failed to connect to server"
 msgstr "Failed to connect to server"
 
-#: src/pam.c:1119
+#: src/pam.c:1125
 msgid "Operation timeout"
 msgstr "Operation timeout"
 
-#: src/pam.c:1122
+#: src/pam.c:1128
 msgid "Connection error"
 msgstr "Connection error"
 
-#: src/pam.c:1420
+#: src/pam.c:1427
 msgid "Failure of the Two-Factor Authentication"
 msgstr "Failure of the Two-Factor Authentication"
 
-#: src/pam.c:1434
+#: src/pam.c:1441
 msgid "Failed to rewrap passphrase for ecryptfs"
 msgstr "Failed to rewrap passphrase for ecryptfs"
 
-#: src/pam.c:1683
+#: src/pam.c:1690
 msgid "Passwords do not match."
 msgstr "Passwords do not match."
 
-#: src/pam.c:1690
+#: src/pam.c:1697
 msgid "It's WAY too short."
 msgstr "It's WAY too short."
 

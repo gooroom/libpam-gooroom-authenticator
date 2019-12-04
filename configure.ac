@@ -1,4 +1,4 @@
-AC_INIT([libpam-gooroom-authenticator], [0.1.0])
+AC_INIT([libpam-gooroom-authenticator], [0.2.3])
 AC_CONFIG_HEADER(config.h)
 
 AM_MAINTAINER_MODE
