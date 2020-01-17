@@ -29,17 +29,17 @@
 
 #define HASH_FUNC(name, hash_func) {name, hash_func}
 
-static char *create_hash_for_type1     (const char *user, const char *password, gpointer user_data);
-static char *create_hash_for_type2     (const char *user, const char *password, gpointer user_data);
-static char *create_hash_for_default (const char *user, const char *password, gpointer user_data);
+static char *create_hash_for_md5    (const char *user, const char *password, gpointer user_data);
+static char *create_hash_for_text   (const char *user, const char *password, gpointer user_data);
+static char *create_hash_for_sha256 (const char *user, const char *password, gpointer user_data);
 
 static struct {
 	const char *name;
 	char *(*hash_func)(const char *, const char *, gpointer);
 } hash_funcs [] = {
-	HASH_FUNC("type1", create_hash_for_type1),
-	HASH_FUNC("type2", create_hash_for_type2),
-	HASH_FUNC("default", create_hash_for_default)
+	HASH_FUNC("md5", create_hash_for_md5),
+	HASH_FUNC("text", create_hash_for_text),
+	HASH_FUNC("sha256", create_hash_for_sha256)
 };
 
 char *
@@ -81,19 +81,19 @@ sha256_hash (const char *message)
 }
 
 static char *
-create_hash_for_type1 (const char *user, const char *password, gpointer user_data)
+create_hash_for_md5 (const char *user, const char *password, gpointer user_data)
 {
 	return md5_hash (password);
 }
 
 static char *
-create_hash_for_type2 (const char *user, const char *password, gpointer user_data)
+create_hash_for_text (const char *user, const char *password, gpointer user_data)
 {
 	return g_uri_escape_string (password, NULL, TRUE);
 }
 
 static char *
-create_hash_for_default (const char *user, const char *password, gpointer data)
+create_hash_for_sha256 (const char *user, const char *password, gpointer data)
 {
 	char *str_hash = NULL;
 	char *sha256pw = NULL;
@@ -129,7 +129,7 @@ create_hash (const char *user, const char *password, gpointer data)
 	}
 
 	if (!pw_system_type)
-		pw_system_type = g_strdup ("default");
+		pw_system_type = g_strdup ("sha256");
 
 	guint i;
 	for (i = 0; i < G_N_ELEMENTS (hash_funcs); i++) {
@@ -143,7 +143,7 @@ create_hash (const char *user, const char *password, gpointer data)
 	}
 
 	if (!str_hash)
-		str_hash = create_hash_for_default (user, password, data);
+		str_hash = create_hash_for_sha256 (user, password, data);
 
 	g_free (pw_system_type);
 	g_key_file_free (keyfile);
