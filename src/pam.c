@@ -65,6 +65,7 @@
 #define DUPLICATE_LOGIN_CODE      "GR48"
 #define PASSWORD_EXPIRATION_CODE  "GR49"
 #define AUTH_FAILURE_CODE         "ELM002AUTHF"
+#define DELETED_USER_CODE         "ELM003AUTHF"
 #define PAM_MOUNT_CONF_PATH       "/etc/security/pam_mount.conf.xml"
 #define PWQUALITY_CONF            "/etc/security/pwquality.conf"
 #define PWQUALITY_CONF_ORG        "/etc/security/pwquality.conf.org"
@@ -248,6 +249,21 @@ delete_config_files (const char *user)
 
 		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL)) {
 			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [%s/.gooroom]", user_entry->pw_dir);
+		}
+
+		g_free (cmd);
+	}
+}
+
+static void
+delete_ecryptfs_directory (const char *user)
+{
+	struct passwd *user_entry = getpwnam (user);
+	if (user_entry) {
+		char *cmd = g_strdup_printf ("/bin/rm -rf /home/.ecryptfs/%s", user);
+
+		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL)) {
+			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [home/.ecryptfs/%s]", user);
 		}
 
 		g_free (cmd);
@@ -840,6 +856,21 @@ is_user_exists (const char *username)
 }
 
 static gboolean
+del_account (const char *username)
+{
+	if (is_user_exists (username)) {
+		char *cmd = g_strdup_printf ("/usr/sbin/userdel -rf %s", username);
+		g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
+		g_free (cmd);
+	}
+
+	if (is_user_exists (username))
+		return FALSE;
+
+	return TRUE;
+}
+
+static gboolean
 add_account (const char *username, const char *realname)
 {
 	char *cmd = NULL;
@@ -1425,6 +1456,11 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			} else {
 				msg = g_strdup_printf ("Authentication Failure:%s", remaining_retry);
 			}
+		} else if (g_str_equal (res_code, DELETED_USER_CODE)) {
+			delete_ecryptfs_directory (user);
+			if (!del_account (user))
+				syslog (LOG_ERR, "pam_gooroom: Failed to delete account [%s]", user);
+			msg = g_strdup_printf ("Authentication Failure");
 		} else if (g_str_equal (res_code, DUPLICATE_LOGIN_CODE)) {
 			msg = g_strdup ("Duplicate Login");
 		} else if (g_str_equal (res_code, ACCOUNT_LOCKING_CODE)) {
