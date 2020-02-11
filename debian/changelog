@@ -1,3 +1,13 @@
+pam-gooroom (0.3.2+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [e4828ce9] 비밀번호 타 입의 이름변경으로 인한 업데이트
+  * [581be4e2] [Bug:1764] GPMS에서 삭제된 사용자는 시스템에서도 계정삭제 처리
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Tue, 11 Feb 2020 11:49:59 +0900
+
 pam-gooroom (0.3.1+grm2u1) unstable; urgency=medium
 
   * Initial Release
