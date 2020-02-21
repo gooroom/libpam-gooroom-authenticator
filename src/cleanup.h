@@ -29,7 +29,6 @@
 G_BEGIN_DECLS
 
 void     cleanup_users           (const char *except_user);
-//void     cleanup_cookies         (const char *except_user);
 
 gboolean cleanup_function_enabled (void);
 

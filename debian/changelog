@@ -1,77 +1,15 @@
-pam-gooroom (0.2.3+grm1u1) unstable; urgency=medium
+pam-gooroom (0.3.2+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
-  * [faf757b2] Fixed the problem that root name is changed when connecting GPMS.
+  * [e4828ce9] 비밀번호 타 입의 이름변경으로 인한 업데이트
+  * [581be4e2] [Bug:1764] GPMS에서 삭제된 사용자는 시스템에서도 계정삭제 처리
 
   [ Gooroom Autobuilder ]
 
- -- Gooroom Autobuilder <jenkins@gooroom.kr>  Fri, 18 Jan 2019 14:09:52 +0900
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Tue, 11 Feb 2020 11:49:59 +0900
 
-pam-gooroom (0.2.2+grm1u1) unstable; urgency=medium
+pam-gooroom (0.3.1+grm2u1) unstable; urgency=medium
 
-  [ cjheo ]
-  * [9965a3ab] Changed structure to enhance error handling
-  * [cdf649b6] Change the timeout for GPMS connection to be configurable in PAM
+  * Initial Release
 
-  [ Gooroom Autobuilder ]
-
- -- Gooroom Autobuilder <jenkins@gooroom.kr>  Wed, 16 Jan 2019 10:43:08 +0900
-
-pam-gooroom (0.2.1+grm1u1) unstable; urgency=medium
-
-  [ cjheo ]
-  * [13e6e17f] Added url encoding function when sending password for type 2.
-  * [3702453d] Added a implementation for changing password
-
-  [ Gooroom Autobuilder ]
-
- -- Gooroom Autobuilder <jenkins@gooroom.kr>  Thu, 11 Oct 2018 11:26:10 +0900
-
-pam-gooroom (0.1.3+grm1u1) unstable; urgency=medium
-
-  [ cjheo ]
-  * [c90688c7] Adding the function to generate hash for type2 password
-
-  [ Gooroom Autobuilder ]
-
- -- Gooroom Autobuilder <jenkins@gooroom.kr>  Wed, 28 Mar 2018 14:39:29 +0900
-
-pam-gooroom (0.1.2+grm1u1) unstable; urgency=medium
-
-  [ Heo, ChangJu ]
-  * [748eb652] Rename function name for MD5 hash
-
-  [ cjheo ]
-  * [9902d9f7] Rewrap the ecryptfs passphrase every time user log in because the ecryptfs passphrase is changed when the user change password
-
-  [ Gooroom Autobuilder ]
-
- -- Gooroom Autobuilder <jenkins@gooroom.kr>  Wed, 14 Mar 2018 17:48:13 +0900
-
-pam-gooroom (0.1.1+grm1u1) unstable; urgency=medium
-
-  [ cjheo ]
-  * [020f962f] Modify user creation command to support encrypted home folder
-  * [b8c66b12] Hash the user's password using the SHA-256 algorithm
-  * [829da800] Add function to support two-factor authentication
-  * [c61b1c04] Add function to request to save rules for GOOROOM system
-  * [38e7510b] Modify dependent packages in debian/control
-  * [71734e29] Add features to enable debug mode
-  * [2118e656] Change location of user information file (.grm-user)
-  * [8729d75e] Add function to create directory to store user information
-  * [b5db9fcd] Add the function to update realname of already existing online user
-  * [65a907ea] Add usleep function to wait for /var/run/user/ folder to be created.
-  * [be9041d2] Don't need to use json_object_put function
-  * [4b43ca2b] Add the function to send the request to check for update blocking.
-  * [9b52cc93] Checked the authentication only if user is already logged in.
-  * [590a214e] Add function to support for creating custom hash
-
-  [ Gooroom Autobuilder ]
-
- -- Gooroom Autobuilder <jenkins@gooroom.kr>  Thu, 16 Nov 2017 15:47:25 +0900
-
-pam-gooroom (0.1.0) unstable; urgency=low
-
-  * Initial release.
-
- -- Gooroom <gooroom@gooroom.kr>  Mon, 15 May 2017 14:43:10 +0900
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Mon, 02 Dec 2019 13:06:18 +0900

@@ -1,5 +1,5 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Source: http://git.gooroom.kr/libpam-gooroom-authenticator
+Source: http://github.com/gooroom/libpam-gooroom-authenticator
 
 Files: *
 Copyright: Copyright (C) 2015-2019 Gooroom <gooroom@gooroom.kr>

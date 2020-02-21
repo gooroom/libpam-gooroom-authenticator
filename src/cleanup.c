@@ -58,7 +58,7 @@ delete_file_recursively (GFile *file)
 		success = g_file_delete (file, NULL, &error);
 		if (success || !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_NOT_EMPTY)) {
 			if (!success) {
-				syslog (LOG_ERR, "pam_gooroom: Error attempting to delete ecryptfs directory: [%s]", error->message);
+				syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [%s]", error->message);
 			}
 			break;
 		}
@@ -301,24 +301,3 @@ cleanup_function_enabled (void)
 
 	return ret;
 }
-
-#if 0
-void
-cleanup_cookies (const char *user)
-{
-	struct passwd *entry = getpwnam (user);
-
-	if (entry) {
-		char *filename = g_build_filename (entry->pw_dir,
-                                           ".config/chromium/Default/Cookies", NULL);
-
-		if (g_file_test (filename, G_FILE_TEST_EXISTS)) {
-			if (g_remove (filename) == -1) {
-				syslog (LOG_INFO, "pam_gooroom: Error attempting to clean up user credential [%s]", __FUNCTION__);
-			}
-		}
-
-		g_free (filename);
-	}
-}
-#endif
