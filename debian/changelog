@@ -1,3 +1,12 @@
+pam-gooroom (0.3.3+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [00de6e3a] grm-auth-check-helper 보안 취약점 수정
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Fri, 31 Jul 2020 13:49:32 +0900
+
 pam-gooroom (0.3.2+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
