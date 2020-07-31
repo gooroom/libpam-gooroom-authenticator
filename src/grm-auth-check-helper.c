@@ -17,6 +17,7 @@
  *
  */
 
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,27 +67,45 @@ do_authentication (const char *user, const char *password)
 	g_free (cmd);
 }
 
+static gboolean
+is_valid_username (const char *user)
+{
+	struct passwd pw, *pwp;
+	char buf[4096] = {0,};
+
+	getpwnam_r (user, &pw, buf, sizeof (buf), &pwp);
+
+	return (pwp != NULL);
+}
+
 int
 main (int argc, char **argv)
 {
+	gboolean        retval;
 	GError         *error = NULL;
 	GOptionContext *context;
 
 	context = g_option_context_new (NULL);
-	g_option_context_set_ignore_unknown_options (context, TRUE);
 	g_option_context_add_main_entries (context, option_entries, NULL);
-
-	/* parse options */
-	if (!g_option_context_parse (context, &argc, &argv, &error)) {
-		g_error_free (error);
-		g_option_context_free (context);
-
-		return EXIT_FAILURE;
-	}
+	retval = g_option_context_parse (context, &argc, &argv, &error);
 	g_option_context_free (context);
 
-	if (!user || !password)
+	/* parse options */
+	if (!retval) {
+		g_warning ("%s", error->message);
+		g_error_free (error);
 		return EXIT_FAILURE;
+	}
+
+	if (!user || !password) {
+		g_warning ("No user or password was specified.");
+		return EXIT_FAILURE;
+	}
+
+	if (!is_valid_username (user)) {
+		g_warning ("Invalid username.");
+		return EXIT_FAILURE;
+	}
 
 	do_authentication (user, password);
 
