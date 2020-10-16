@@ -134,6 +134,8 @@ typedef struct _LoginData {
 
 static gboolean DEBUG         = FALSE;
 static gboolean TWO_FACTOR    = FALSE;
+static gboolean user_real_added    = FALSE;
+
 static int CONNECTION_TIMEOUT = 30; // Default Timeout: 30sec
 
 
@@ -876,8 +878,10 @@ add_account (const char *username, const char *realname)
 	char *cmd = NULL;
 
 	if (is_user_exists (username)) {
+		user_real_added = FALSE;
 		cmd = g_strdup_printf ("/usr/bin/chfn -f %s %s", (realname ? realname : username), username);
 	} else {
+		user_real_added = TRUE;
 		const char *cmd_prefix = "/usr/sbin/adduser --force-badname --shell /bin/bash --disabled-login --encrypt-home --gecos";
 		if (realname) {
 			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, realname, GOOROOM_ACCOUNT, username);
@@ -1552,6 +1556,25 @@ logout_from_online (const char *host, const char *token)
 }
 
 static gboolean
+ensure_check_unwrapped_pw_file (char *unwrapped_pw_filename)
+{
+	int try = 0;
+
+	// waiting for 2 secs
+	for (;;) {
+		if (g_file_test (unwrapped_pw_filename, G_FILE_TEST_EXISTS))
+			return TRUE;
+
+		if (try++ >= 40)
+			break;
+
+		g_usleep (G_USEC_PER_SEC / 20); // waiting for 1/20 sec
+	}
+
+	return FALSE;
+}
+
+static gboolean
 rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, const char *new_password)
 {
 	gboolean ret = FALSE;
@@ -1565,6 +1588,14 @@ rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, c
 
 	wrapped_passphrase_file = get_wrapped_passphrase_file (user);
 	unwrapped_pw_filename = g_strdup_printf ("/dev/shm/.ecryptfs-%s", user);
+
+	if (user_real_added) {
+		if (!ensure_check_unwrapped_pw_file (unwrapped_pw_filename)) {
+			syslog (LOG_ERR, "pam_gooroom: Couldn't find %s file [%s]", unwrapped_pw_filename, __FUNCTION__);
+			ret = FALSE;
+			goto out;
+		}
+	}
 
 	if (g_file_test (unwrapped_pw_filename, G_FILE_TEST_EXISTS)) {
 		char *passphrase = NULL;
