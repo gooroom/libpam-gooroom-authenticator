@@ -1,3 +1,12 @@
+pam-gooroom (0.3.4+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [a474be62] 사용자 추가 후 '/dev/shm/.ecryptf-{user}' 파일의 생성여부 체크로직 추가
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Mon, 02 Nov 2020 16:22:09 +0900
+
 pam-gooroom (0.3.3+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
