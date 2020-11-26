@@ -49,7 +49,7 @@ do_authentication (const char *user, const char *password)
 	char *url = parse_url ();
 	char *pw_hash = create_hash (user, password, NULL);
 
-	char *cmd = g_strdup_printf ("curl -d"
+	char *cmd = g_strdup_printf ("/usr/bin/curl -d"
                                  " \"user_id=%s&user_pw=%s\""
                                  " -X POST \"https://%s/glm/v1/pam/authconfirm\""
                                  " --cert \"%s\""
