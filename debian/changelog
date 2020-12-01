@@ -1,3 +1,12 @@
+pam-gooroom (0.3.6+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [f8f194d4] user_prefix 옵션 처리시 NULL Pointer 오류 수정
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Tue, 01 Dec 2020 21:49:36 +0900
+
 pam-gooroom (0.3.5+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
