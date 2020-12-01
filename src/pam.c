@@ -135,7 +135,7 @@ typedef struct _LoginData {
 static gboolean DEBUG         = FALSE;
 static gboolean TWO_FACTOR    = FALSE;
 static gboolean user_real_added    = FALSE;
-static const char *USER_PREFIX = NULL;
+static const char *USER_PREFIX;
 
 static int CONNECTION_TIMEOUT = 30; // Default Timeout: 30sec
 
@@ -178,8 +178,12 @@ get_hash (const char *user, const char *password, gpointer user_data)
 
 	if (USER_PREFIX) {
 		/* remove prefix from user*/
-		char *id = strstr (user, USER_PREFIX) + strlen (USER_PREFIX);
-		pw_hash = create_hash (id, password, NULL);
+		if (strstr (user, USER_PREFIX) != NULL) {
+			char *id = strstr (user, USER_PREFIX) + strlen (USER_PREFIX);
+			pw_hash = create_hash (id, password, NULL);
+		} else {
+			pw_hash = create_hash (user, password, NULL);
+		}
 	} else {
 		pw_hash = create_hash (user, password, NULL);
 	}
@@ -1758,6 +1762,7 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 	int retval;
 	int account_type = ACCOUNT_TYPE_LOCAL;
 	const char *user;
+	gboolean have_user_prefix = FALSE;
 
 	/* step through arguments */
 	for (; argc-- > 0; ++argv) {
@@ -1772,9 +1777,13 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 		} else if (!strncmp (*argv, "user_prefix=", 12)) {
 			if ((*argv)[12] != '\0') {
 				USER_PREFIX = (12 + *argv);
+				have_user_prefix = TRUE;
 			}
 		}
 	}
+
+	if (!have_user_prefix)
+		USER_PREFIX = NULL;
 
 	CONNECTION_TIMEOUT = (CONNECTION_TIMEOUT < 1) ? 30 : CONNECTION_TIMEOUT;
 

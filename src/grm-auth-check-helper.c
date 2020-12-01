@@ -53,8 +53,12 @@ do_authentication (const char *user, const char *password, const char *user_pref
 
 	if (user_prefix) {
 		/* remove prefix from user */
-        char *id = strstr (user, user_prefix) + strlen (user_prefix);
-		pw_hash = create_hash (id, password, NULL);
+		if (strstr (user, user_prefix) != NULL) {
+	        char *id = strstr (user, user_prefix) + strlen (user_prefix);
+			pw_hash = create_hash (id, password, NULL);
+		} else {
+			pw_hash = create_hash (user, password, NULL);
+		}
 	} else {
 		pw_hash = create_hash (user, password, NULL);
 	}
