@@ -135,6 +135,7 @@ typedef struct _LoginData {
 static gboolean DEBUG         = FALSE;
 static gboolean TWO_FACTOR    = FALSE;
 static gboolean user_real_added    = FALSE;
+static const char *USER_PREFIX = NULL;
 
 static int CONNECTION_TIMEOUT = 30; // Default Timeout: 30sec
 
@@ -168,6 +169,22 @@ write_memory_callback (void *contents, size_t size, size_t nmemb, void *userp)
 	mem->memory[mem->size] = 0;
 
 	return realsize;
+}
+
+static char *
+get_hash (const char *user, const char *password, gpointer user_data)
+{
+	char *pw_hash = NULL;
+
+	if (USER_PREFIX) {
+		/* remove prefix from user*/
+		char *id = strstr (user, USER_PREFIX) + strlen (USER_PREFIX);
+		pw_hash = create_hash (id, password, NULL);
+	} else {
+		pw_hash = create_hash (user, password, NULL);
+	}
+
+	return pw_hash;
 }
 
 static gint64
@@ -620,9 +637,6 @@ get_account_type (const char *user)
 {
 	int account_type = ACCOUNT_TYPE_LOCAL;
 	struct passwd *user_entry = getpwnam (user);
-
-	if (!user_entry)
-		return ACCOUNT_TYPE_GOOROOM;
 
 	if (!user_entry) {
 		if (!g_file_test ("/tmp/.gooroom-greeter-cloud-login", G_FILE_TEST_EXISTS))
@@ -1132,8 +1146,7 @@ get_two_factor_hash_from_online (pam_handle_t *pamh, const char *host, const cha
 	curl = curl_easy_init ();
 
 	if (curl) {
-		char *pw_hash = create_hash (user, password, NULL);
-
+		char *pw_hash = get_hash (user, password, NULL);
 		char *url = g_strdup_printf ("https://%s/glm/v1/pam/nfc", host);
 		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, pw_hash);
 
@@ -1256,8 +1269,14 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 	int retval = PAM_IGNORE;
 
 	if (geteuid () != 0) {
-		char *cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\'",
-                                     GRM_AUTH_CHECK_HELPER, user, password);
+		char *cmd = NULL;
+		if (USER_PREFIX) {
+			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --user-prefix \'%s\'",
+                                   GRM_AUTH_CHECK_HELPER, user, password, USER_PREFIX);
+		} else {
+			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\'",
+                                   GRM_AUTH_CHECK_HELPER, user, password);
+		}
 		g_spawn_command_line_sync (cmd, &data, NULL, NULL, NULL);
 		g_free (cmd);
 	} else {
@@ -1274,8 +1293,7 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 		curl = curl_easy_init ();
 
 		if (curl) {
-			char *pw_hash = create_hash (user, password, NULL);
-
+			char *pw_hash = get_hash (user, password, NULL);
 			char *url = g_strdup_printf ("https://%s/glm/v1/pam/authconfirm", host);
 			char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, pw_hash);
 
@@ -1373,8 +1391,7 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 	curl = curl_easy_init ();
 
 	if (curl) {
-		char *pw_hash = create_hash (user, password, NULL);
-
+		char *pw_hash = get_hash (user, password, NULL);
 		char *url = g_strdup_printf ("https://%s/glm/v1/pam/auth", host);
 		char *post_fields = g_strdup_printf ("user_id=%s&user_pw=%s", user, pw_hash);
 
@@ -1752,6 +1769,10 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 			if ((*argv)[19] != '\0') {
 				CONNECTION_TIMEOUT = atoi (19 + *argv);
 			}
+		} else if (!strncmp (*argv, "user_prefix=", 12)) {
+			if ((*argv)[12] != '\0') {
+				USER_PREFIX = (12 + *argv);
+			}
 		}
 	}
 
@@ -1803,9 +1824,8 @@ request_to_change_password (const char *user, const char *host, const char *toke
 	curl = curl_easy_init ();
 
 	if (curl) {
-		char *old_pw_hash = create_hash (user, old_passwd, NULL);
-		char *new_pw_hash = create_hash (user, new_passwd, NULL);
-
+		char *old_pw_hash = get_hash (user, old_passwd, NULL);
+		char *new_pw_hash = get_hash (user, new_passwd, NULL);
 		char *url = g_strdup_printf ("https://%s/glm/v1/pam/password", host);
 		char *post_fields = g_strdup_printf ("password=%s&new_password=%s&login_token=%s", old_pw_hash, new_pw_hash, token);
 

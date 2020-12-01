@@ -29,12 +29,14 @@
 
 static gchar *user = NULL;
 static gchar *password = NULL;
+static gchar *user_prefix = NULL;
 
 static GOptionEntry option_entries[] =
 {
-	{ "user",     'u', 0, G_OPTION_ARG_STRING, &user,     NULL, NULL },
-    { "password", 'p', 0, G_OPTION_ARG_STRING, &password, NULL, NULL },
-    { NULL }
+	{ "user",        'u', 0, G_OPTION_ARG_STRING, &user,     NULL, NULL },
+	{ "password",    'p', 0, G_OPTION_ARG_STRING, &password, NULL, NULL },
+	{ "user-prefix", 'p', 0, G_OPTION_ARG_STRING, &user_prefix, NULL, NULL },
+	{ NULL }
 };
 
 
@@ -44,12 +46,20 @@ static GOptionEntry option_entries[] =
  * --cert "/etc/ssl/certs/gooroom_client.crt" --key "/etc/ssl/private/gooroom_client.key"
 */
 static void
-do_authentication (const char *user, const char *password)
+do_authentication (const char *user, const char *password, const char *user_prefix)
 {
+	char *pw_hash = NULL;
 	char *url = parse_url ();
-	char *pw_hash = create_hash (user, password, NULL);
 
-	char *cmd = g_strdup_printf ("curl -d"
+	if (user_prefix) {
+		/* remove prefix from user */
+        char *id = strstr (user, user_prefix) + strlen (user_prefix);
+		pw_hash = create_hash (id, password, NULL);
+	} else {
+		pw_hash = create_hash (user, password, NULL);
+	}
+
+	char *cmd = g_strdup_printf ("/usr/bin/curl -d"
                                  " \"user_id=%s&user_pw=%s\""
                                  " -X POST \"https://%s/glm/v1/pam/authconfirm\""
                                  " --cert \"%s\""
@@ -107,7 +117,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	do_authentication (user, password);
+	do_authentication (user, password, user_prefix);
 
 	return EXIT_SUCCESS;
 }
