@@ -1,3 +1,13 @@
+pam-gooroom (0.3.5+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [a08876c4] 환경변수 조작을 통한 root권한 획득 보안취약점 수정
+  * [6feb09d5] 숫자로만 구성되어 있는 user id의 경우 GPMS 로그인을 위해 인증 함수에 user_prfix 라는 인자를 추가
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Tue, 01 Dec 2020 12:37:43 +0900
+
 pam-gooroom (0.3.4+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
