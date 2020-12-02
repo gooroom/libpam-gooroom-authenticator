@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <syslog.h>
 
 #include <glib.h>
 
@@ -155,18 +156,28 @@ create_hash (const char *user, const char *password, gpointer data)
 char *
 parse_url (void)
 {
-	char     *url     = NULL;
-	GError   *error   = NULL;
+	int try = 1;
+	char  *url = NULL;
+	GError  *error = NULL;
 	GKeyFile *keyfile = NULL;
+
+	while (!g_file_test (GOOROOM_MANAGEMENT_SERVER_CONF, G_FILE_TEST_EXISTS)) {
+		g_usleep (G_USEC_PER_SEC / 2); // waiting for 1/2 sec
+		if (try > 10) {
+			syslog (LOG_ERR, "pam_gooroom : No such file or directory [%s]", GOOROOM_MANAGEMENT_SERVER_CONF);
+			return NULL;
+		}
+		try++;
+	}
 
 	keyfile = g_key_file_new ();
 
-	g_key_file_load_from_file (keyfile, GOOROOM_MANAGEMENT_SERVER_CONF, G_KEY_FILE_KEEP_COMMENTS, &error);
+	g_key_file_load_from_file (keyfile, GOOROOM_MANAGEMENT_SERVER_CONF,
+                               G_KEY_FILE_KEEP_COMMENTS, &error);
 
 	if (error == NULL) {
-		if (g_key_file_has_group (keyfile, "domain")) {
+		if (g_key_file_has_group (keyfile, "domain"))
 			url = g_key_file_get_string (keyfile, "domain", "glm", NULL);
-		}
 	}
 
 	g_key_file_free (keyfile);
