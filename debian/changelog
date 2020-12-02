@@ -1,3 +1,12 @@
+pam-gooroom (0.3.7+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [ac689f98] GPMS 로그인 시 필요한 gcsr.conf 파일이 없을 때 예외처리 추가
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Wed, 02 Dec 2020 13:00:26 +0900
+
 pam-gooroom (0.3.6+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
