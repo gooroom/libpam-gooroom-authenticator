@@ -162,8 +162,8 @@ parse_url (void)
 	GKeyFile *keyfile = NULL;
 
 	while (!g_file_test (GOOROOM_MANAGEMENT_SERVER_CONF, G_FILE_TEST_EXISTS)) {
-		g_usleep (G_USEC_PER_SEC / 2); // waiting for 1/2 sec
-		if (try > 10) {
+		g_usleep (G_USEC_PER_SEC / 10); // waiting for 1/10 sec
+		if (try > 1200) {
 			syslog (LOG_ERR, "pam_gooroom : No such file or directory [%s]", GOOROOM_MANAGEMENT_SERVER_CONF);
 			return NULL;
 		}
