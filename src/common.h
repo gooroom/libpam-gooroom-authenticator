@@ -43,7 +43,7 @@ G_BEGIN_DECLS
 char *md5_hash    (const char *message);
 char *sha256_hash (const char *message);
 
-char *create_hash (const char *user, const char *password, gpointer data);
+char *create_hash (const char *user, const char *password, const char* encrypt_type,  gpointer data);
 
 char *parse_url   (void);
 

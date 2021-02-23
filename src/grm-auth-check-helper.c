@@ -30,12 +30,14 @@
 static gchar *user = NULL;
 static gchar *password = NULL;
 static gchar *user_prefix = NULL;
+static gchar *password_type = NULL;
 
 static GOptionEntry option_entries[] =
 {
 	{ "user",        'u', 0, G_OPTION_ARG_STRING, &user,     NULL, NULL },
 	{ "password",    'p', 0, G_OPTION_ARG_STRING, &password, NULL, NULL },
 	{ "user-prefix", 'p', 0, G_OPTION_ARG_STRING, &user_prefix, NULL, NULL },
+	{ "password_type", 'p', 0, G_OPTION_ARG_STRING, &password_type, NULL, NULL },
 	{ NULL }
 };
 
@@ -46,7 +48,7 @@ static GOptionEntry option_entries[] =
  * --cert "/etc/ssl/certs/gooroom_client.crt" --key "/etc/ssl/private/gooroom_client.key"
 */
 static void
-do_authentication (const char *user, const char *password, const char *user_prefix)
+do_authentication (const char *user, const char *password, const char *user_prefix, const gchar *password_type)
 {
 	char *pw_hash = NULL;
 	char *url = parse_url ();
@@ -55,12 +57,12 @@ do_authentication (const char *user, const char *password, const char *user_pref
 		/* remove prefix from user */
 		if (strstr (user, user_prefix) != NULL) {
 	        char *id = strstr (user, user_prefix) + strlen (user_prefix);
-			pw_hash = create_hash (id, password, NULL);
+			pw_hash = create_hash (id, password, password_type, NULL);
 		} else {
-			pw_hash = create_hash (user, password, NULL);
+			pw_hash = create_hash (user, password, password_type, NULL);
 		}
 	} else {
-		pw_hash = create_hash (user, password, NULL);
+		pw_hash = create_hash (user, password, password_type, NULL);
 	}
 
 	char *cmd = g_strdup_printf ("/usr/bin/curl -d"
@@ -121,7 +123,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	do_authentication (user, password, user_prefix);
+	do_authentication (user, password, user_prefix, password_type);
 
 	return EXIT_SUCCESS;
 }

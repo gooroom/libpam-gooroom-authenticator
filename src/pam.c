@@ -166,6 +166,7 @@ static gboolean DEBUG         = FALSE;
 static gboolean TWO_FACTOR    = FALSE;
 static gboolean user_real_added    = FALSE;
 static const char *USER_PREFIX;
+static const char *PASSWORD_TYPE;
 
 static int CONNECTION_TIMEOUT = 30; // Default Timeout: 30sec
 
@@ -223,12 +224,12 @@ get_hash (const char *user, const char *password, gpointer user_data)
 		/* remove prefix from user*/
 		if (strstr (user, USER_PREFIX) != NULL) {
 			char *id = strstr (user, USER_PREFIX) + strlen (USER_PREFIX);
-			pw_hash = create_hash (id, password, NULL);
+			pw_hash = create_hash (id, password, PASSWORD_TYPE, NULL);
 		} else {
-			pw_hash = create_hash (user, password, NULL);
+			pw_hash = create_hash (user, password, PASSWORD_TYPE,  NULL);
 		}
 	} else {
-		pw_hash = create_hash (user, password, NULL);
+		pw_hash = create_hash (user, password, PASSWORD_TYPE, NULL);
 	}
 
 	return pw_hash;
@@ -1330,11 +1331,11 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 	if (geteuid () != 0) {
 		char *cmd = NULL;
 		if (USER_PREFIX) {
-			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --user-prefix \'%s\'",
-                                   GRM_AUTH_CHECK_HELPER, user, password, USER_PREFIX);
+			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --password_type %s --user-prefix \'%s\'",
+                                   GRM_AUTH_CHECK_HELPER, user, password, PASSWORD_TYPE, USER_PREFIX);
 		} else {
-			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\'",
-                                   GRM_AUTH_CHECK_HELPER, user, password);
+			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --password_type %s",
+                                   GRM_AUTH_CHECK_HELPER, user, password, PASSWORD_TYPE);
 		}
 		g_spawn_command_line_sync (cmd, &data, NULL, NULL, NULL);
 		g_free (cmd);
@@ -1638,7 +1639,7 @@ ensure_check_unwrapped_pw_file (char *unwrapped_pw_filename)
 		if (g_file_test (unwrapped_pw_filename, G_FILE_TEST_EXISTS))
 			return TRUE;
 
-		if (try++ >= 40)
+		if (try++ >= 600)
 			break;
 
 		g_usleep (G_USEC_PER_SEC / 20); // waiting for 1/20 sec
@@ -1836,6 +1837,10 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 			if ((*argv)[12] != '\0') {
 				USER_PREFIX = (12 + *argv);
 				have_user_prefix = TRUE;
+			}
+		} else if (!strncmp (*argv, "password_type=", 14)) {
+			if ((*argv)[14] != '\0') {
+				PASSWORD_TYPE = (14 + *argv);
 			}
 		}
 	}
