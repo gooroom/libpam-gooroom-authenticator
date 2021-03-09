@@ -53,11 +53,18 @@ md5_hash (const char *message)
 	MD5_Update(&ctx, message, strlen (message));
 	MD5_Final(digest, &ctx);
 
+#if 0
 	char *str_hash = g_new0 (char, MD5_DIGEST_LENGTH*2+1);
 	memset (str_hash, 0x00, MD5_DIGEST_LENGTH*2+1);
 
 	for(int i = 0; i < MD5_DIGEST_LENGTH; i++)
 		sprintf (&str_hash[i*2], "%02x", (unsigned int)digest[i]);
+#endif
+	char *str_hash = g_new0 (char, MD5_DIGEST_LENGTH+1);
+	memset (str_hash, 0x00, MD5_DIGEST_LENGTH+1);
+
+	for(int i = 0; i < MD5_DIGEST_LENGTH; i++)
+		sprintf (&str_hash[i], "%c", (unsigned int)digest[i]);
 
 	return str_hash;
 }
@@ -84,7 +91,16 @@ sha256_hash (const char *message)
 static char *
 create_hash_for_md5 (const char *user, const char *password, gpointer user_data)
 {
-	return md5_hash (password);
+	gchar *encoded_text;
+	guint len, i;
+	char *md5 = g_new0 (char, MD5_DIGEST_LENGTH);
+	memset (md5, 0x00, MD5_DIGEST_LENGTH);
+
+	md5 = md5_hash (password);
+
+	encoded_text = g_base64_encode (md5, MD5_DIGEST_LENGTH);
+
+	return g_uri_escape_string (encoded_text, NULL, TRUE);
 }
 
 static char *
@@ -112,7 +128,7 @@ create_hash_for_sha256 (const char *user, const char *password, gpointer data)
 }
 
 char *
-create_hash (const char *user, const char *password, gpointer data)
+create_hash (const char *user, const char *password, const char* password_type, gpointer data)
 {
 	GError   *error    = NULL;
 	GKeyFile *keyfile  = NULL;
@@ -123,11 +139,14 @@ create_hash (const char *user, const char *password, gpointer data)
 
 	g_key_file_load_from_file (keyfile, GOOROOM_MANAGEMENT_SERVER_CONF, G_KEY_FILE_KEEP_COMMENTS, &error);
 
+#if 0
 	if (error == NULL) {
 		if (g_key_file_has_group (keyfile, "certificate")) {
 			pw_system_type = g_key_file_get_string (keyfile, "certificate", "password_system_type", NULL);
 		}
 	}
+#endif
+	pw_system_type = g_strdup (password_type);
 
 	if (!pw_system_type)
 		pw_system_type = g_strdup ("sha256");
@@ -162,8 +181,8 @@ parse_url (void)
 	GKeyFile *keyfile = NULL;
 
 	while (!g_file_test (GOOROOM_MANAGEMENT_SERVER_CONF, G_FILE_TEST_EXISTS)) {
-		g_usleep (G_USEC_PER_SEC / 2); // waiting for 1/2 sec
-		if (try > 10) {
+		g_usleep (G_USEC_PER_SEC / 10); // waiting for 1/10 sec
+		if (try > 1200) {
 			syslog (LOG_ERR, "pam_gooroom : No such file or directory [%s]", GOOROOM_MANAGEMENT_SERVER_CONF);
 			return NULL;
 		}

@@ -73,6 +73,36 @@
 
 #define PAM_FORGET(X) if (X) {memset(X, 0, strlen(X));free(X);X = NULL;}
 
+
+enum {
+       SERVER_URL_ERROR                        = 1000, // /etc/gooroom/gooroom-client-server-register/gcsr.conf 파일이 존재하지 않거나, 내용이 올바르지 않을 때 발생.
+       USER_EXISTS_ERROR                       = 1010, // 최초 로그인 시 사용자의 생성을 실패했거나, 기존에 로그인 했던 사용자가 시스템에 존재하지 않을 경우 발생함.
+       LOGIN_DATA_ERROR                        = 1020, // GPMS 로그인 시 GPMS 서버로 부터 얻은 json 데이터를 PAM 내부적으로 가져오지 못할경우 발생.
+                                                       // 일반적으로 발생하면 안되는 에러지만, 만약 발생한다면 PAM 내부의 메모리문제 등을 의심해 볼 수 있음.
+       CURL_CREATING_ERROR                     = 2000, // PAM 내부적으로 CURL 객체를 생성하지 못했을 때 발생하는 에러.
+                                                       // 일반적으로 발생하면 안되는 에러지만, 만약 발생한다면 PAM 내부의 메모리문제 등을 의심해 볼 수 있음.
+       CURL_DATA_ERROR                         = 2010, // GPMS 로그인 시 GPMS 서버로 부터 얻은 json 데이터를 저장하지 못했을 때 발생.
+                                                       // 일반적으로 발생하면 안되는 에러지만, 만약 발생한다면 PAM 내부의 메모리문제 등을 의심해 볼 수 있음.
+       CURL_CONNECTION_ERROR                   = 2100, // CURL을 통해 GPMS 로그인 시 CURL의 결과값에 2100을 더한값.
+                                                       // CURLCode는 0 ~ 96까지 존재하므로 에러 발생 시 CURLCode값을 참조한다.
+       ECRYPTFS_USER_FILE_EXISTS_ERROR         = 3000, // GPMS 최초 로그인 시 암호화파일시스템을 위해 생성되는 파일(/dev/shm/.ecryptfs-$USER)이 생성되지 않았을 때 발생하는 에러.
+       ECRYPTFS_USER_FILE_CONTENTS_ERROR       = 3001, // 암호화파일시스템을 위해 생성되는 파일(/dev/shm/.ecryptfs-$USER)의 내용을 읽지 못했을 때 발생하는 에러.
+       ECRYPTFS_PUBLIC_KEY_ERROR               = 3010, // 인증서(/etc/ssl/certs/gooroom_client.crt) 파일에서 공개키 추출에 실패했을 경우 발생하는 에러.
+       ECRYPTFS_PRIVATE_KEY_ERROR              = 3011, // 개인키(/etc/ssl/private/gooroom_client.key) 읽기 실패 시 발생하는 에러.
+       ECRYPTFS_BASE64_ENCODING_ERROR          = 3020, // 공개키로 암호화한 암호화파일시스템용 패스프레이즈를 base64로 엔코딩하는데 실패한 경우 발생.
+                                                       // 발생한다면 메모리 문제일 가능성이 많음.
+       ECRYPTFS_BASE64_DECODING_ERROR          = 3021, // GPMS에서 가져온 암호화파일시스템용 패스프레이즈(공개키로암호화됨)를 base64로 디코딩하는데 실패한 경우 발생.
+                                                       // 발생한다면 GPMS에서 가져온 패스프레이즈의 오류가 있거나 메모리 오류일 수 있음.
+       ECRYPTFS_PASSPHRASE_ENCRYPTING_ERROR    = 3030, // 암호화파일시스템용 패스프레이즈를 공개키로 encrypting 하는데 실패한 경우 발생.
+       ECRYPTFS_PASSPHRASE_DECRYPTING_ERROR    = 3031, // 암호화파일시스템용 패스프레이즈를 개인키로 decrypting 하는데 실패한 경우 발생.
+       ECRYPTFS_PASSPHRASE_SENDING_ERROR       = 3032, // 암호화파일시스템용 패스프레이즈를 GPMS로 전송하는데 실패한 경우 발생.
+       ECRYPTFS_PASSPHRASE_FILE_WRAPPING_ERROR = 3033, // /dev/shm/.ecryptfs-$USER 파일과 새로운 패스워드를 사용하여 사용자 홈디렉토리 아래 wrapped-passphrase파일을 생성하는데 실패한 경우 발생.
+       ECRYPTFS_PASSPHRASE_ONLINE_ERROR        = 3034, // GPMS로부터 가져온 암호화파일시스템용 패스프레이즈가 빈(Empty)값일 때 발생.
+                                                       // 에러 발생 시 애초부터 암호화파일시스템용 패스프레이즈를 GPMS로 전송할 때 빈(Empty)값이 전송되었을 가능성이 있음.
+       ECRYPTFS_PASSPHRASE_REWRAPPING_ERROR    = 3035  // 암호화파일시스템용 패스프레이즈를 새로운 사용자 패스워드로 재래핑(Re-Wrapping)하는데 실패한 경우 발생.
+};
+
+
 enum {
 	ACCOUNT_TYPE_LOCAL = 0,
 	ACCOUNT_TYPE_GOOROOM,
@@ -136,6 +166,7 @@ static gboolean DEBUG         = FALSE;
 static gboolean TWO_FACTOR    = FALSE;
 static gboolean user_real_added    = FALSE;
 static const char *USER_PREFIX;
+static const char *PASSWORD_TYPE;
 
 static int CONNECTION_TIMEOUT = 30; // Default Timeout: 30sec
 
@@ -171,6 +202,19 @@ write_memory_callback (void *contents, size_t size, size_t nmemb, void *userp)
 	return realsize;
 }
 
+static void
+send_info_msg_with_error_code (pam_handle_t *pamh, const char *message_title, int error_code)
+{
+	gchar *err_msg = NULL;
+
+	err_msg = g_strdup_printf ("%s [%s: GRME-%d]", message_title, _("Error Code"), error_code);
+
+	send_info_msg (pamh, err_msg);
+
+	g_free (err_msg);
+}
+
+
 static char *
 get_hash (const char *user, const char *password, gpointer user_data)
 {
@@ -180,12 +224,12 @@ get_hash (const char *user, const char *password, gpointer user_data)
 		/* remove prefix from user*/
 		if (strstr (user, USER_PREFIX) != NULL) {
 			char *id = strstr (user, USER_PREFIX) + strlen (USER_PREFIX);
-			pw_hash = create_hash (id, password, NULL);
+			pw_hash = create_hash (id, password, PASSWORD_TYPE, NULL);
 		} else {
-			pw_hash = create_hash (user, password, NULL);
+			pw_hash = create_hash (user, password, PASSWORD_TYPE,  NULL);
 		}
 	} else {
-		pw_hash = create_hash (user, password, NULL);
+		pw_hash = create_hash (user, password, PASSWORD_TYPE, NULL);
 	}
 
 	return pw_hash;
@@ -513,7 +557,7 @@ get_mounts (json_object *dt_obj)
 }
 
 static gboolean
-decrypt_passphrase (const char *i_passphrase, unsigned char *o_passphrase)
+decrypt_passphrase (pam_handle_t *pamh, const char *i_passphrase, unsigned char *o_passphrase)
 {
 	gboolean ret = FALSE;
 	char *private_key = NULL;
@@ -523,6 +567,7 @@ decrypt_passphrase (const char *i_passphrase, unsigned char *o_passphrase)
 
 	if (!base64_encoded_passphrase || strlen (base64_encoded_passphrase) == 0) {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to get base64 encoded passphrase from online [%s]", __FUNCTION__);
+		send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PASSPHRASE_ONLINE_ERROR);
 		return FALSE;
 	}
 
@@ -536,13 +581,16 @@ decrypt_passphrase (const char *i_passphrase, unsigned char *o_passphrase)
 				ret = TRUE;
 			} else {
 				syslog (LOG_ERR, "pam_gooroom: Error attempting to decrypt passphrase with private key [%s]", __FUNCTION__);
+				send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PASSPHRASE_DECRYPTING_ERROR);
 			}
 		} else {
 			syslog (LOG_ERR, "pam_gooroom: Base64 decoding error [%s]", __FUNCTION__);
+			send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_BASE64_DECODING_ERROR);
 		}
 		g_free (encrypted_passphrase);
 	} else {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to get private key [%s]", __FUNCTION__);
+		send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PRIVATE_KEY_ERROR);
 	}
 	g_free (private_key);
 
@@ -1100,10 +1148,14 @@ save_passphrase_to_online (pam_handle_t *pamh, const char *login_token, const ch
 	public_key = get_public_key_from_certificate ();
 	if (!public_key) {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to get public key from certificate [%s]", __FUNCTION__);
+		send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PUBLIC_KEY_ERROR);
 		return FALSE;
 	}
 
-	encrypted_passphrase_len = encrypt_with_public_key ((unsigned char *)passphrase, strlen (passphrase), (unsigned char *)public_key, encrypted_passphrase);
+	encrypted_passphrase_len = encrypt_with_public_key ((unsigned char *)passphrase,
+                                                        strlen (passphrase),
+                                                        (unsigned char *)public_key,
+                                                        encrypted_passphrase);
 
 	g_free (public_key);
 
@@ -1117,17 +1169,21 @@ save_passphrase_to_online (pam_handle_t *pamh, const char *login_token, const ch
 					ret = TRUE;
 				} else {
 					syslog (LOG_ERR, "pam_gooroom: Error attempting to send passphrase to online [%s]", __FUNCTION__);
+					send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PASSPHRASE_SENDING_ERROR);
 				}
 			} else {
 				syslog (LOG_ERR, "pam_gooroom: Error attempting to get online url [%s]", __FUNCTION__);
+				send_info_msg_with_error_code (pamh, _("Login Failure"), SERVER_URL_ERROR);
 			}
 			g_free (url);
 		} else {
 			syslog (LOG_ERR, "pam_gooroom: Base64 encoding error [%s]", __FUNCTION__);
+			send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_BASE64_ENCODING_ERROR);
 		}
 		g_free (base64_encoded_passphrase);
 	} else {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to encrypt passphrase with public key [%s]", __FUNCTION__);
+		send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PASSPHRASE_ENCRYPTING_ERROR);
 	}
 
 	return ret;
@@ -1275,11 +1331,11 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 	if (geteuid () != 0) {
 		char *cmd = NULL;
 		if (USER_PREFIX) {
-			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --user-prefix \'%s\'",
-                                   GRM_AUTH_CHECK_HELPER, user, password, USER_PREFIX);
+			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --password_type %s --user-prefix \'%s\'",
+                                   GRM_AUTH_CHECK_HELPER, user, password, PASSWORD_TYPE, USER_PREFIX);
 		} else {
-			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\'",
-                                   GRM_AUTH_CHECK_HELPER, user, password);
+			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --password_type %s",
+                                   GRM_AUTH_CHECK_HELPER, user, password, PASSWORD_TYPE);
 		}
 		g_spawn_command_line_sync (cmd, &data, NULL, NULL, NULL);
 		g_free (cmd);
@@ -1420,27 +1476,23 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		g_free (post_fields);
 	} else {
 		syslog (LOG_ERR, "pam_gooroom: Error creating curl [%s]", __FUNCTION__);
+		send_info_msg_with_error_code (pamh, _("Login Failure"), CURL_CREATING_ERROR);
+		retval = PAM_AUTH_ERR;
+		goto done;
 	}
 
 	curl_global_cleanup ();
 
 	if (res != CURLE_OK) {
+		syslog (LOG_ERR, "pam_gooroom: Connection Error [CURL Error Code: %d]",res);
+		send_info_msg_with_error_code (pamh, _("Login Failure"), CURL_CONNECTION_ERROR + res);
 		retval = PAM_AUTH_ERR;
-		if (res == CURLE_COULDNT_CONNECT) {
-			syslog (LOG_ERR, "pam_gooroom: Failed to connect to host or proxy [%s]", __FUNCTION__);
-			send_info_msg (pamh, _("Failed to connect to server"));
-		} else if (res == CURLE_OPERATION_TIMEDOUT) {
-			syslog (LOG_ERR, "pam_gooroom: Operation timeout [%s]", __FUNCTION__);
-			send_info_msg (pamh, _("Operation timeout"));
-		} else {
-			syslog (LOG_ERR, "pam_gooroom: Connection error [%s]", __FUNCTION__);
-			send_info_msg (pamh, _("Connection error"));
-		}
 		goto done;
 	}
 
 	data = g_strdup (chunk.memory);
 	if (!data) {
+		send_info_msg_with_error_code (pamh, _("Login Failure"), CURL_DATA_ERROR);
 		retval = PAM_AUTH_ERR;
 		goto done;
 	}
@@ -1469,23 +1521,18 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			retval = PAM_SUCCESS;
 		} else {
 			syslog (LOG_ERR, "pam_gooroom: Error attempting to create account [%s]", __FUNCTION__);
+			send_info_msg_with_error_code (pamh, _("Login Failure"), USER_EXISTS_ERROR);
 			retval = PAM_AUTH_ERR;
 		}
 	} else {
 		syslog (LOG_ERR, "pam_gooroom: Authentication is failed : Code [%s]", res_code);
 
 		char *msg = NULL;
-		if (g_str_equal (res_code, AUTH_FAILURE_CODE)) {
-			if (g_str_equal (remaining_retry, "0")) {
-				msg = g_strdup ("Account Locking");
-			} else {
-				msg = g_strdup_printf ("Authentication Failure:%s", remaining_retry);
-			}
-		} else if (g_str_equal (res_code, DELETED_USER_CODE)) {
+		if (g_str_equal (res_code, DELETED_USER_CODE)) {
 			delete_ecryptfs_directory (user);
 			if (!del_account (user))
 				syslog (LOG_ERR, "pam_gooroom: Failed to delete account [%s]", user);
-			msg = g_strdup_printf ("Authentication Failure");
+			msg = g_strdup ("Deleted Account");
 		} else if (g_str_equal (res_code, DUPLICATE_LOGIN_CODE)) {
 			msg = g_strdup ("Duplicate Login");
 		} else if (g_str_equal (res_code, ACCOUNT_LOCKING_CODE)) {
@@ -1498,6 +1545,12 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			msg = g_strdup ("Division Expiration");
 		} else if (g_str_equal (res_code, LOGIN_TRIAL_EXCEED_CODE)) {
 			msg = g_strdup ("Login Trial Exceed");
+		} else { // res_code == AUTH_FAILURE_CODE
+			if (g_str_equal (remaining_retry, "0")) {
+				msg = g_strdup ("Account Locking");
+			} else {
+				msg = g_strdup_printf ("Authentication Failure:%s", remaining_retry);
+			}
 		}
 
 		if (msg) {
@@ -1586,7 +1639,7 @@ ensure_check_unwrapped_pw_file (char *unwrapped_pw_filename)
 		if (g_file_test (unwrapped_pw_filename, G_FILE_TEST_EXISTS))
 			return TRUE;
 
-		if (try++ >= 40)
+		if (try++ >= 600)
 			break;
 
 		g_usleep (G_USEC_PER_SEC / 20); // waiting for 1/20 sec
@@ -1604,8 +1657,10 @@ rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, c
 	char *wrapped_passphrase_file = NULL;
 	unsigned char passphrase[4098] = {0,};
 
-	if (pam_get_data (pamh, "login_data", (const void**)&login_data) != PAM_SUCCESS)
+	if (pam_get_data (pamh, "login_data", (const void**)&login_data) != PAM_SUCCESS) {
+		send_info_msg_with_error_code (pamh, _("Login Failure"), LOGIN_DATA_ERROR);
 		return FALSE;
+	}
 
 	wrapped_passphrase_file = get_wrapped_passphrase_file (user);
 	unwrapped_pw_filename = g_strdup_printf ("/dev/shm/.ecryptfs-%s", user);
@@ -1613,6 +1668,7 @@ rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, c
 	if (user_real_added) {
 		if (!ensure_check_unwrapped_pw_file (unwrapped_pw_filename)) {
 			syslog (LOG_ERR, "pam_gooroom: Couldn't find %s file [%s]", unwrapped_pw_filename, __FUNCTION__);
+			send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_USER_FILE_EXISTS_ERROR);
 			ret = FALSE;
 			goto out;
 		}
@@ -1627,13 +1683,15 @@ rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, c
 				if (wrap_passphrase_file (user, wrapped_passphrase_file, new_password, unwrapped_pw_filename) == 0) {
 					ret = TRUE;
 				} else {
-					syslog (LOG_ERR, "pam_gooroom: Error wrapping cleartext password [%s]", __FUNCTION__);
+					syslog (LOG_ERR, "pam_gooroom: Error wrapping passphrase [%s]", __FUNCTION__);
+					send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PASSPHRASE_FILE_WRAPPING_ERROR);
 				}
 			} else {
 				syslog (LOG_ERR, "pam_gooroom: Error attempting to save passphrase [%s]", __FUNCTION__);
 			}
 		} else {
 			syslog (LOG_ERR, "pam_gooroom: Error attempting to get random passphrase [%s]", __FUNCTION__);
+			send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_USER_FILE_CONTENTS_ERROR);
 		}
 
 		g_free (passphrase);
@@ -1642,10 +1700,13 @@ rewrap_ecryptfs_passphrase_if_necessary (pam_handle_t *pamh, const char *user, c
 	}
 
 	// get existing passphrase from online
-	if (decrypt_passphrase (login_data->encrypted_passphrase, passphrase)) {
+	if (decrypt_passphrase (pamh, login_data->encrypted_passphrase, passphrase)) {
 		// Rewrap passphrase with new password
-		if (wrap_passphrase (user, wrapped_passphrase_file, new_password, (char *)passphrase) == 0)
+		if (wrap_passphrase (user, wrapped_passphrase_file, new_password, (char *)passphrase) == 0) {
 			ret = TRUE;
+		} else {
+			send_info_msg_with_error_code (pamh, _("Login Failure"), ECRYPTFS_PASSPHRASE_REWRAPPING_ERROR);
+		}
 	}
 
 out:
@@ -1701,6 +1762,7 @@ handle_gooroom_authenticate (pam_handle_t *pamh, const char *user)
 	url = parse_url ();
 	if (!url) {
 		syslog (LOG_ERR, "pam_gooroom : Error attempting to get online url [%s]", __FUNCTION__);
+		send_info_msg_with_error_code (pamh, _("Login Failure"), SERVER_URL_ERROR);
 		return PAM_AUTH_ERR;
 	}
 
@@ -1743,11 +1805,8 @@ handle_gooroom_authenticate (pam_handle_t *pamh, const char *user)
 	}
 
 	if (!user_logged_in (user)) {
-		if (!rewrap_ecryptfs_passphrase_if_necessary (pamh, user, password)) {
-			syslog (LOG_ERR, "pam_gooroom : Failed to rewrap passphrase for ecryptfs [%s]", __FUNCTION__ );
-			send_info_msg (pamh, _("Failed to rewrap passphrase for ecryptfs"));
+		if (!rewrap_ecryptfs_passphrase_if_necessary (pamh, user, password))
 			retval = PAM_AUTH_ERR;
-		}
 	}
 
 out:
@@ -1778,6 +1837,10 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, const char **argv)
 			if ((*argv)[12] != '\0') {
 				USER_PREFIX = (12 + *argv);
 				have_user_prefix = TRUE;
+			}
+		} else if (!strncmp (*argv, "password_type=", 14)) {
+			if ((*argv)[14] != '\0') {
+				PASSWORD_TYPE = (14 + *argv);
 			}
 		}
 	}
