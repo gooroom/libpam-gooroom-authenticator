@@ -691,6 +691,10 @@ get_account_type (const char *user)
 	struct passwd *user_entry = getpwnam (user);
 
 	if (!user_entry) {
+		/* Is GPMS registered ?? */
+		if (!g_file_test ("/etc/gooroom/gooroom-client-server-register/gcsr.conf", G_FILE_TEST_EXISTS))
+			return account_type;
+
 		if (!g_file_test ("/tmp/.gooroom-greeter-cloud-login", G_FILE_TEST_EXISTS))
 			return ACCOUNT_TYPE_GOOROOM;
 
