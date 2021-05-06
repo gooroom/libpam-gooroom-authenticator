@@ -1,3 +1,10 @@
+pam-gooroom (0.4.1+grm2u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [c9a627a1] GLM서버의 ELM000AUTHF~ELM007AUTHF응답에 대한 처리
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Thu, 06 May 2021 20:51:46 +0900
+
 pam-gooroom (0.4.0+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
