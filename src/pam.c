@@ -64,8 +64,12 @@
 #define LOGIN_TRIAL_EXCEED_CODE   "GR47"
 #define DUPLICATE_LOGIN_CODE      "GR48"
 #define PASSWORD_EXPIRATION_CODE  "GR49"
+#define INVALID_USER_CODE         "ELM000AUTHF"
+#define NOEXIST_USER_CODE         "ELM001AUTHF"
 #define AUTH_FAILURE_CODE         "ELM002AUTHF"
 #define DELETED_USER_CODE         "ELM003AUTHF"
+#define POLICY_VIOLATION_CODE     "ELM006AUTHF"
+#define NOT_ALLOWED_IP_CODE       "ELM007AUTHF"
 #define PAM_MOUNT_CONF_PATH       "/etc/security/pam_mount.conf.xml"
 #define PWQUALITY_CONF            "/etc/security/pwquality.conf"
 #define PWQUALITY_CONF_ORG        "/etc/security/pwquality.conf.org"
@@ -691,6 +695,10 @@ get_account_type (const char *user)
 	struct passwd *user_entry = getpwnam (user);
 
 	if (!user_entry) {
+		/* Is GPMS registered ?? */
+		if (!g_file_test ("/etc/gooroom/gooroom-client-server-register/gcsr.conf", G_FILE_TEST_EXISTS))
+			return account_type;
+
 		if (!g_file_test ("/tmp/.gooroom-greeter-cloud-login", G_FILE_TEST_EXISTS))
 			return ACCOUNT_TYPE_GOOROOM;
 
@@ -1528,11 +1536,25 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 		syslog (LOG_ERR, "pam_gooroom: Authentication is failed : Code [%s]", res_code);
 
 		char *msg = NULL;
-		if (g_str_equal (res_code, DELETED_USER_CODE)) {
+		if (g_str_equal (res_code, INVALID_USER_CODE)) {
+			msg = g_strdup ("Invalid Account");
+		} else if (g_str_equal (res_code, NOEXIST_USER_CODE)) {
+			msg = g_strdup ("No Exist Account");
+		} else if (g_str_equal (res_code, AUTH_FAILURE_CODE)) {
+			if (g_str_equal (remaining_retry, "0")) {
+				msg = g_strdup ("Account Locking");
+			} else {
+				msg = g_strdup_printf ("Authentication Failure:%s", remaining_retry);
+			}
+		} else if (g_str_equal (res_code, DELETED_USER_CODE)) {
 			delete_ecryptfs_directory (user);
 			if (!del_account (user))
 				syslog (LOG_ERR, "pam_gooroom: Failed to delete account [%s]", user);
 			msg = g_strdup ("Deleted Account");
+		} else if (g_str_equal (res_code, POLICY_VIOLATION_CODE)) {
+			msg = g_strdup ("Policy Violation Account");
+		} else if (g_str_equal (res_code, NOT_ALLOWED_IP_CODE)) {
+			msg = g_strdup ("Not Allowed IP");
 		} else if (g_str_equal (res_code, DUPLICATE_LOGIN_CODE)) {
 			msg = g_strdup ("Duplicate Login");
 		} else if (g_str_equal (res_code, ACCOUNT_LOCKING_CODE)) {
@@ -1545,12 +1567,8 @@ login_from_online (pam_handle_t *pamh, const char *host, const char *user, const
 			msg = g_strdup ("Division Expiration");
 		} else if (g_str_equal (res_code, LOGIN_TRIAL_EXCEED_CODE)) {
 			msg = g_strdup ("Login Trial Exceed");
-		} else { // res_code == AUTH_FAILURE_CODE
-			if (g_str_equal (remaining_retry, "0")) {
-				msg = g_strdup ("Account Locking");
-			} else {
-				msg = g_strdup_printf ("Authentication Failure:%s", remaining_retry);
-			}
+		} else {
+			msg = g_strdup ("Authentication Failure");
 		}
 
 		if (msg) {

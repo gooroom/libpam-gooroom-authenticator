@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pam-gooroom\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2021-01-04 18:18+0900\n"
+"POT-Creation-Date: 2021-04-16 10:36+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Gooroom <gooroom@gooroom.kr>\n"
 "Language: ko\n"
@@ -16,36 +16,36 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/pam.c:209
+#: src/pam.c:214
 msgid "Error Code"
 msgstr "오류코드"
 
-#: src/pam.c:569 src/pam.c:583 src/pam.c:587 src/pam.c:592 src/pam.c:1150
-#: src/pam.c:1171 src/pam.c:1175 src/pam.c:1180 src/pam.c:1185 src/pam.c:1478
-#: src/pam.c:1487 src/pam.c:1494 src/pam.c:1523 src/pam.c:1660 src/pam.c:1670
-#: src/pam.c:1686 src/pam.c:1693 src/pam.c:1707 src/pam.c:1764
+#: src/pam.c:574 src/pam.c:588 src/pam.c:592 src/pam.c:597 src/pam.c:1159
+#: src/pam.c:1180 src/pam.c:1184 src/pam.c:1189 src/pam.c:1194 src/pam.c:1487
+#: src/pam.c:1496 src/pam.c:1503 src/pam.c:1532 src/pam.c:1679 src/pam.c:1689
+#: src/pam.c:1705 src/pam.c:1712 src/pam.c:1726 src/pam.c:1783
 msgid "Login Failure"
 msgstr "로그인 실패"
 
-#: src/pam.c:1795
+#: src/pam.c:1814
 msgid "Failure of the Two-Factor Authentication"
 msgstr ""
 "이중 인증에 실패하였습니다.\n"
 "인증을 다시 시도 하시기 바랍니다."
 
-#: src/pam.c:1998
+#: src/pam.c:2021
 msgid "Current password: "
 msgstr "현재  암호:"
 
-#: src/pam.c:2029
+#: src/pam.c:2052
 msgid "New password: "
 msgstr "새  암호:"
 
-#: src/pam.c:2034
+#: src/pam.c:2057
 msgid "Retype new password: "
 msgstr "새  암호 재입력:"
 
-#: src/pam.c:2041
+#: src/pam.c:2064
 msgid "Passwords do not match."
 msgstr "암호가 일치하지 않습니다."
 
