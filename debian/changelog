@@ -1,3 +1,10 @@
+pam-gooroom (0.4.1+grm3u2) unstable; urgency=medium
+
+  [ cjheo ]
+  * [11adef45] GETTEXT MACRO VERSION 오류 수정
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Sun, 05 Dec 2021 18:46:00 +0900
+
 pam-gooroom (0.4.1+grm3u1) unstable; urgency=medium
 
   * Released on gooroom-3.0
