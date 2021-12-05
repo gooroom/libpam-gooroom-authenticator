@@ -1,3 +1,9 @@
+pam-gooroom (0.4.1+grm3u1) unstable; urgency=medium
+
+  * Released on gooroom-3.0
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Sun, 05 Dec 2021 18:17:28 +0900
+
 pam-gooroom (0.4.1+grm2u1) unstable; urgency=medium
 
   [ cjheo ]
