@@ -7,10 +7,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pam-gooroom\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2021-04-19 19:02+0900\n"
+"POT-Creation-Date: 2022-06-17 19:32+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Gooroom <gooroom@gooroom.kr>\n"
-"Language: en\n"
+"Language: en_US\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -20,30 +20,30 @@ msgstr ""
 msgid "Error Code"
 msgstr "Error Code"
 
-#: src/pam.c:574 src/pam.c:588 src/pam.c:592 src/pam.c:597 src/pam.c:1159
-#: src/pam.c:1180 src/pam.c:1184 src/pam.c:1189 src/pam.c:1194 src/pam.c:1487
-#: src/pam.c:1496 src/pam.c:1503 src/pam.c:1532 src/pam.c:1679 src/pam.c:1689
-#: src/pam.c:1705 src/pam.c:1712 src/pam.c:1726 src/pam.c:1783
+#: src/pam.c:574 src/pam.c:588 src/pam.c:592 src/pam.c:597 src/pam.c:1164
+#: src/pam.c:1185 src/pam.c:1189 src/pam.c:1194 src/pam.c:1199 src/pam.c:1492
+#: src/pam.c:1501 src/pam.c:1508 src/pam.c:1537 src/pam.c:1684 src/pam.c:1694
+#: src/pam.c:1710 src/pam.c:1717 src/pam.c:1731 src/pam.c:1788
 msgid "Login Failure"
 msgstr "Login Failure"
 
-#: src/pam.c:1814
+#: src/pam.c:1819
 msgid "Failure of the Two-Factor Authentication"
 msgstr "Failure of the Two-Factor Authentication"
 
-#: src/pam.c:2021
+#: src/pam.c:2026
 msgid "Current password: "
 msgstr "Current password:"
 
-#: src/pam.c:2052
+#: src/pam.c:2057
 msgid "New password: "
 msgstr "New password:"
 
-#: src/pam.c:2057
+#: src/pam.c:2062
 msgid "Retype new password: "
 msgstr "Retype new password:"
 
-#: src/pam.c:2064
+#: src/pam.c:2069
 msgid "Passwords do not match."
 msgstr "Passwords do not match."
 

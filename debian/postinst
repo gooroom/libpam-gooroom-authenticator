@@ -1,0 +1,11 @@
+#!/bin/sh
+ 
+set -e
+
+# creating gpms group if he isn't already there
+if ! getent group gpms >/dev/null; then
+        addgroup gpms
+fi
+
+#DEBHELPER#
+exit 0

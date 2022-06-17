@@ -968,8 +968,13 @@ add_account (const char *username, const char *realname)
 
 	g_free (cmd);
 
-	if (is_user_exists (username))
+	if (is_user_exists (username)) {
+		cmd = g_strdup_printf ("/usr/sbin/adduser %s gpms", username);
+		g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
+		g_free (cmd);
+
 		return TRUE;
+	}
 
 	return FALSE;
 }
