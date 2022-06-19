@@ -1,3 +1,10 @@
+pam-gooroom (0.4.2+grm3u1) unstable; urgency=medium
+
+  [ boyeon.choi ]
+  * [bcb60111] gpms 그룹을 생성하고 gpms 사용자를 gpms 그룹에 추가
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Mon, 20 Jun 2022 08:57:29 +0900
+
 pam-gooroom (0.4.1+grm3u2) unstable; urgency=medium
 
   [ cjheo ]
