@@ -1,3 +1,10 @@
+pam-gooroom (0.4.3+grm3u1) unstable; urgency=medium
+
+  [ jongkyung.woo ]
+  * [c28019f4] Fixed to conflict between live-installer user's gid and gpms's gid 1000
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Tue, 21 Jun 2022 18:30:50 +0900
+
 pam-gooroom (0.4.2+grm3u1) unstable; urgency=medium
 
   [ boyeon.choi ]
