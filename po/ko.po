@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pam-gooroom\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2022-06-17 19:32+0900\n"
+"POT-Creation-Date: 2024-07-02 13:56+0900\n"
 "PO-Revision-Date: 2017-08-28 06:13+0000\n"
 "Language-Team: Gooroom <gooroom@gooroom.kr>\n"
 "Language: ko\n"
@@ -35,15 +35,15 @@ msgstr ""
 
 #: src/pam.c:2026
 msgid "Current password: "
-msgstr "현재  암호:"
+msgstr "현재 암호: "
 
 #: src/pam.c:2057
 msgid "New password: "
-msgstr "새  암호:"
+msgstr "새 암호: "
 
 #: src/pam.c:2062
 msgid "Retype new password: "
-msgstr "새  암호 재입력:"
+msgstr "새 암호 재입력: "
 
 #: src/pam.c:2069
 msgid "Passwords do not match."

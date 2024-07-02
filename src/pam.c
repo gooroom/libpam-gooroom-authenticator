@@ -1057,7 +1057,7 @@ wrap_passphrase (const char *user,
 				(GSpawnChildSetupFunc)setuid_child_setup_func, pw,
 				NULL, NULL, &status, NULL))
 	{
-		g_spawn_check_exit_status (status, NULL);
+		g_spawn_check_wait_status (status, NULL);
 	}
 
 	return status;
@@ -1084,7 +1084,7 @@ wrap_passphrase_file (const char *user,
                       (GSpawnChildSetupFunc)setuid_child_setup_func, pw,
                       NULL, NULL, &status, NULL))
 	{
-		g_spawn_check_exit_status (status, NULL);
+		g_spawn_check_wait_status (status, NULL);
 	}
 
 	return status;
