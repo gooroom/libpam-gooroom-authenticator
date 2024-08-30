@@ -1,3 +1,10 @@
+pam-gooroom (4.1.0+grm4u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [439183c0] [Bug:5724] Modify translation file related to login
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Fri, 30 Aug 2024 16:00:25 +0900
+
 pam-gooroom (4.0.0+grm4u1) unstable; urgency=medium
 
   [ jongkyung.woo ]
