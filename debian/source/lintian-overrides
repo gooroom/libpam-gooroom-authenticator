@@ -1,0 +1,4 @@
+# Gooroom local package - not intended for Debian upload
+pam-gooroom source: no-nmu-in-changelog
+pam-gooroom source: source-nmu-has-incorrect-version-number
+pam-gooroom source: latest-debian-changelog-entry-without-new-date

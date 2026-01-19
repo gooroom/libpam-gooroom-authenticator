@@ -77,8 +77,6 @@ ecryptfs_wrap_passphrase_file_helper_LDFLAGS = $(ECRYPTFS_LIBS)
 install-exec-hook:
 	rm -f "$(DESTDIR)$(pamdir)/*.a"
 	rm -f "$(DESTDIR)$(pamdir)/*.la"
-	chown root "$(DESTDIR)$(pkglibexecdir)/grm-auth-check-helper"
-	chmod +s "$(DESTDIR)$(pkglibexecdir)/grm-auth-check-helper"
 
 uninstall-local:
 	rm -f "$(DESTDIR)$(pamdir)/pam_gooroom.so"

@@ -6,8 +6,11 @@ DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH).
 %:
 	dh $@
 
+override_dh_autoreconf:
+	gettextize --force --copy --no-changelog
+	dh_autoreconf ./autogen.sh
+
 override_dh_auto_configure:
-	./autogen.sh
 	dh_auto_configure -- \
 		--with-pamdir=/lib/$(DEB_HOST_MULTIARCH)/security
 
