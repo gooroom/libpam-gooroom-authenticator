@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 # -*- makefile -*-
 
-DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH).
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 
 %:
 	dh $@
@@ -12,10 +12,16 @@ override_dh_autoreconf:
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
-		--with-pamdir=/lib/$(DEB_HOST_MULTIARCH)/security
+		--with-pamdir=/usr/lib/$(DEB_HOST_MULTIARCH)/security \
+		--disable-static
 
 override_dh_fixperms:
 	dh_fixperms
 
 	find debian -name 'grm-auth-check-helper' -exec chown root {} \;
 	find debian -name 'grm-auth-check-helper' -exec chmod +s {} \;
+
+# PAM 모듈은 dlopen 되는 .so 만 쓴다. libtool 아카이브는 런타임에 쓰이지 않고
+# 이 소스는 -dev 패키지를 내지 않으므로 담을 자리가 없다.
+execute_after_dh_auto_install:
+	find debian -name '*.la' -delete
