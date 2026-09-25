@@ -1,3 +1,9 @@
+pam-gooroom (4.1.0+grm5u2) gooroom-5.0; urgency=medium
+
+  * 모듈을 usr 아래로 설치한다
+
+ -- jongkyung.woo <jkwoo@gooroom.kr>  Sat, 26 Sep 2026 08:15:38 +0900
+
 pam-gooroom (4.1.0+grm5u1) gooroom-5.0; urgency=medium
 
   * local package: Release for gooroom-5.0
