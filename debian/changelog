@@ -1,3 +1,10 @@
+pam-gooroom (4.2.0+grm5u1) gooroom-5.0; urgency=medium
+
+  * [#1416] Harden the setuid auth-check helper: clean environment, password on stdin, own account only.
+  * [#1438] Ignore a non-directory ~/.gooroom and an untrusted greeter marker in /tmp.
+
+ -- jongkyung.woo <jkwoo@gooroom.kr>  Sat, 03 Oct 2026 18:37:37 +0900
+
 pam-gooroom (4.1.0+grm5u2) gooroom-5.0; urgency=medium
 
   * 모듈을 usr 아래로 설치한다
