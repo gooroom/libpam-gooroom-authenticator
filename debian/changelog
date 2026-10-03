@@ -1,3 +1,10 @@
+pam-gooroom (4.2.0+grm4u1) unstable; urgency=medium
+
+  * [#1417] Harden the setuid auth-check helper: clean environment, password on stdin, own account only.
+  * [#1439] Ignore a non-directory ~/.gooroom and an untrusted greeter marker in /tmp.
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Sat, 03 Oct 2026 19:19:10 +0900
+
 pam-gooroom (4.1.0+grm4u1) unstable; urgency=medium
 
   [ cjheo ]
