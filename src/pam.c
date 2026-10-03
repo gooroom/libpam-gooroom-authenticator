@@ -274,7 +274,9 @@ make_sure_to_create_save_dir (const char *homedir)
 
 	g_mkdir_with_parents (dir, 0700);
 
-	if (!g_file_test (dir, G_FILE_TEST_EXISTS)) {
+	/* root writes into this user-controlled path: refuse a symlink */
+	struct stat st;
+	if (lstat (dir, &st) != 0 || !S_ISDIR (st.st_mode)) {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to create directory: [%s]", dir);
 		ret = FALSE;
 	}
@@ -688,6 +690,23 @@ parse_login_data (LoginData *login_data, const char *data)
 	}
 }
 
+/* The greeter marker lives in /tmp: only trust it if root or lightdm wrote it */
+static gboolean
+trusted_greeter_marker (const char *path)
+{
+	struct stat st;
+	struct passwd *greeter;
+
+	if (lstat (path, &st) != 0 || !S_ISREG (st.st_mode))
+		return FALSE;
+
+	if (st.st_uid == 0)
+		return TRUE;
+
+	greeter = getpwnam ("lightdm");
+	return (greeter && st.st_uid == greeter->pw_uid);
+}
+
 static int
 get_account_type (const char *user)
 {
@@ -699,7 +718,7 @@ get_account_type (const char *user)
 		if (!g_file_test ("/etc/gooroom/gooroom-client-server-register/gcsr.conf", G_FILE_TEST_EXISTS))
 			return account_type;
 
-		if (!g_file_test ("/tmp/.gooroom-greeter-cloud-login", G_FILE_TEST_EXISTS))
+		if (!trusted_greeter_marker ("/tmp/.gooroom-greeter-cloud-login"))
 			return ACCOUNT_TYPE_GOOROOM;
 
 		char *contents = NULL;
