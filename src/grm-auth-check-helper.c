@@ -18,6 +18,8 @@
  */
 
 #include <pwd.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +37,6 @@ static gchar *password_type = NULL;
 static GOptionEntry option_entries[] =
 {
 	{ "user",        'u', 0, G_OPTION_ARG_STRING, &user,     NULL, NULL },
-	{ "password",    'p', 0, G_OPTION_ARG_STRING, &password, NULL, NULL },
 	{ "user-prefix", 'p', 0, G_OPTION_ARG_STRING, &user_prefix, NULL, NULL },
 	{ "password_type", 'p', 0, G_OPTION_ARG_STRING, &password_type, NULL, NULL },
 	{ NULL }
@@ -65,22 +66,47 @@ do_authentication (const char *user, const char *password, const char *user_pref
 		pw_hash = create_hash (user, password, password_type, NULL);
 	}
 
-	char *cmd = g_strdup_printf ("/usr/bin/curl -d"
-                                 " \"user_id=%s&user_pw=%s\""
-                                 " -X POST \"https://%s/glm/v1/pam/authconfirm\""
-                                 " --cert \"%s\""
-                                 " --key \"%s\"",
-                                 user,
-                                 pw_hash,
-                                 url,
-                                 GOOROOM_CERT,
-                                 GOOROOM_PRIVATE_KEY);
+	/* This program is setuid root and holds the client key: run curl with an
+	 * argv (no shell), -q (ignore any curlrc) and the form body on stdin so the
+	 * password hash never appears on a command line. */
+	g_autofree gchar *endpoint = g_strdup_printf ("https://%s/glm/v1/pam/authconfirm", url ? url : "");
+	g_autofree gchar *uid_enc = g_uri_escape_string (user, NULL, FALSE);
+	g_autofree gchar *body = g_strdup_printf ("user_id=%s&user_pw=%s", uid_enc, pw_hash ? pw_hash : "");
+	gchar *argv[] = { "/usr/bin/curl", "-q", "-s", "--data-binary", "@-", "-X", "POST", endpoint,
+	                  "--cert", GOOROOM_CERT, "--key", GOOROOM_PRIVATE_KEY, NULL };
+	GPid pid;
+	gint in_fd = -1;
 
-	g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
+	if (url && g_spawn_async_with_pipes (NULL, argv, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL,
+	                                     &pid, &in_fd, NULL, NULL, NULL)) {
+		gsize len = strlen (body), off = 0;
+		while (off < len) {
+			ssize_t n = write (in_fd, body + off, len - off);
+			if (n <= 0) break;
+			off += n;
+		}
+		close (in_fd);
+		waitpid (pid, NULL, 0);
+		g_spawn_close_pid (pid);
+	}
 
+	memset (body, 0, strlen (body));
 	g_free (url);
 	g_free (pw_hash);
-	g_free (cmd);
+}
+
+/* The password is read from stdin, never argv (argv is visible to every local user). */
+static gchar *
+read_password (void)
+{
+	char buf[4096];
+
+	if (!fgets (buf, sizeof (buf), stdin))
+		return NULL;
+	buf[strcspn (buf, "\n")] = '\0';
+	gchar *ret = g_strdup (buf);
+	memset (buf, 0, sizeof (buf));
+	return ret;
 }
 
 static gboolean
@@ -101,6 +127,10 @@ main (int argc, char **argv)
 	GError         *error = NULL;
 	GOptionContext *context;
 
+	/* setuid root: drop everything the caller put in the environment */
+	clearenv ();
+	setenv ("PATH", "/usr/sbin:/usr/bin:/sbin:/bin", 1);
+
 	context = g_option_context_new (NULL);
 	g_option_context_add_main_entries (context, option_entries, NULL);
 	retval = g_option_context_parse (context, &argc, &argv, &error);
@@ -113,6 +143,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	password = read_password ();
 	if (!user || !password) {
 		g_warning ("No user or password was specified.");
 		return EXIT_FAILURE;
@@ -121,6 +152,15 @@ main (int argc, char **argv)
 	if (!is_valid_username (user)) {
 		g_warning ("Invalid username.");
 		return EXIT_FAILURE;
+	}
+
+	/* A non-root caller may only check its own password. */
+	if (getuid () != 0) {
+		struct passwd *self = getpwuid (getuid ());
+		if (!self || g_strcmp0 (self->pw_name, user) != 0) {
+			g_warning ("Permission denied.");
+			return EXIT_FAILURE;
+		}
 	}
 
 	do_authentication (user, password, user_prefix, password_type);
