@@ -1342,16 +1342,36 @@ check_auth (pam_handle_t *pamh, const char *host, const char *user, const char *
 	int retval = PAM_IGNORE;
 
 	if (geteuid () != 0) {
-		char *cmd = NULL;
-		if (USER_PREFIX) {
-			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --password_type %s --user-prefix \'%s\'",
-                                   GRM_AUTH_CHECK_HELPER, user, password, PASSWORD_TYPE, USER_PREFIX);
-		} else {
-			cmd = g_strdup_printf ("%s --user \'%s\' --password \'%s\' --password_type %s",
-                                   GRM_AUTH_CHECK_HELPER, user, password, PASSWORD_TYPE);
+		/* argv (no shell) and the password on stdin: argv is readable by
+		 * every local user through /proc/<pid>/cmdline. */
+		/* keep the old behaviour of passing "(null)" when password_type is unset */
+		gchar *argv[] = { GRM_AUTH_CHECK_HELPER, "--user", (gchar *) user,
+		                  "--password_type", (gchar *) (PASSWORD_TYPE ? PASSWORD_TYPE : "(null)"),
+		                  USER_PREFIX ? "--user-prefix" : NULL, (gchar *) USER_PREFIX, NULL };
+		GPid pid;
+		gint in_fd = -1, out_fd = -1;
+
+		if (g_spawn_async_with_pipes (NULL, argv, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL,
+		                              &pid, &in_fd, &out_fd, NULL, NULL)) {
+			gsize len = password ? strlen (password) : 0, off = 0;
+			while (off < len) {
+				ssize_t n = write (in_fd, password + off, len - off);
+				if (n <= 0) break;
+				off += n;
+			}
+			(void) write (in_fd, "\n", 1);
+			close (in_fd);
+
+			GString *out = g_string_new (NULL);
+			char buf[4096];
+			ssize_t n;
+			while ((n = read (out_fd, buf, sizeof (buf))) > 0)
+				g_string_append_len (out, buf, n);
+			close (out_fd);
+			waitpid (pid, NULL, 0);
+			g_spawn_close_pid (pid);
+			data = g_string_free (out, FALSE);
 		}
-		g_spawn_command_line_sync (cmd, &data, NULL, NULL, NULL);
-		g_free (cmd);
 	} else {
 		CURL *curl;
 		CURLcode res = CURLE_OK;
