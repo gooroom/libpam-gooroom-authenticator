@@ -301,9 +301,10 @@ change_mode_and_owner (uid_t uid, uid_t gid, const char *file)
 	}
 
 	dir = g_path_get_dirname (file);
-	cmd = g_strdup_printf ("/bin/chown -R %d:%d %s", uid, gid, dir);
+	cmd = g_strdup_printf ("%d:%d", uid, gid);
 
-	if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL))
+	const char *argv[] = { "/bin/chown", "-R", cmd, "--", dir, NULL };
+	if (!run_argv_sync (argv, NULL))
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to change owner [%s]", dir);
 
 	g_free (cmd);
@@ -318,9 +319,10 @@ delete_config_files (const char *user)
 {
 	struct passwd *user_entry = getpwnam (user);
 	if (user_entry) {
-		char *cmd = g_strdup_printf ("/bin/rm -rf %s/.gooroom", user_entry->pw_dir);
+		char *cmd = g_build_filename (user_entry->pw_dir, ".gooroom", NULL);
+		const char *argv[] = { "/bin/rm", "-rf", "--", cmd, NULL };
 
-		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL)) {
+		if (!run_argv_sync (argv, NULL)) {
 			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [%s/.gooroom]", user_entry->pw_dir);
 		}
 
@@ -333,9 +335,13 @@ delete_ecryptfs_directory (const char *user)
 {
 	struct passwd *user_entry = getpwnam (user);
 	if (user_entry) {
-		char *cmd = g_strdup_printf ("/bin/rm -rf /home/.ecryptfs/%s", user);
+		if (strchr (user, '/') || g_str_equal (user, ".") || g_str_equal (user, ".."))
+			return;
 
-		if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL)) {
+		char *cmd = g_build_filename ("/home/.ecryptfs", user, NULL);
+		const char *argv[] = { "/bin/rm", "-rf", "--", cmd, NULL };
+
+		if (!run_argv_sync (argv, NULL)) {
 			syslog (LOG_ERR, "pam_gooroom: Error attempting to delete directory: [home/.ecryptfs/%s]", user);
 		}
 
@@ -954,9 +960,8 @@ static gboolean
 del_account (const char *username)
 {
 	if (is_user_exists (username)) {
-		char *cmd = g_strdup_printf ("/usr/sbin/userdel -rf %s", username);
-		g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
-		g_free (cmd);
+		const char *argv[] = { "/usr/sbin/userdel", "-rf", "--", username, NULL };
+		run_argv_sync (argv, NULL);
 	}
 
 	if (is_user_exists (username))
@@ -968,29 +973,25 @@ del_account (const char *username)
 static gboolean
 add_account (const char *username, const char *realname)
 {
-	char *cmd = NULL;
+	const char *name = realname ? realname : username;
 
 	if (is_user_exists (username)) {
 		user_real_added = FALSE;
-		cmd = g_strdup_printf ("/usr/bin/chfn -f %s %s", (realname ? realname : username), username);
+		const char *argv[] = { "/usr/bin/chfn", "-f", name, "--", username, NULL };
+		run_argv_sync (argv, NULL);
 	} else {
 		user_real_added = TRUE;
-		const char *cmd_prefix = "/usr/sbin/adduser --force-badname --shell /bin/bash --disabled-login --encrypt-home --gecos";
-		if (realname) {
-			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, realname, GOOROOM_ACCOUNT, username);
-		} else {
-			cmd = g_strdup_printf ("%s \"%s,,,,%s\" %s", cmd_prefix, username, GOOROOM_ACCOUNT, username);
-		}
+		char *gecos = g_strdup_printf ("%s,,,,%s", name, GOOROOM_ACCOUNT);
+		const char *argv[] = { "/usr/sbin/adduser", "--force-badname", "--shell", "/bin/bash",
+		                       "--disabled-login", "--encrypt-home", "--gecos", gecos,
+		                       "--", username, NULL };
+		run_argv_sync (argv, NULL);
+		g_free (gecos);
 	}
 
-	g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
-
-	g_free (cmd);
-
 	if (is_user_exists (username)) {
-		cmd = g_strdup_printf ("/usr/sbin/adduser %s gpms", username);
-		g_spawn_command_line_sync (cmd, NULL, NULL, NULL, NULL);
-		g_free (cmd);
+		const char *argv[] = { "/usr/sbin/adduser", "--", username, "gpms", NULL };
+		run_argv_sync (argv, NULL);
 
 		return TRUE;
 	}
