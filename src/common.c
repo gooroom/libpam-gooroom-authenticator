@@ -205,3 +205,13 @@ parse_url (void)
 
 	return url;
 }
+
+/* run a fixed program with arguments as a vector, never through a shell
+ * or command-line splitting, so names taken from the server or the
+ * greeter stay single arguments */
+gboolean
+run_argv_sync (const char * const *argv, GError **error)
+{
+	return g_spawn_sync (NULL, (char **)argv, NULL, 0, NULL, NULL,
+	                     NULL, NULL, NULL, error);
+}

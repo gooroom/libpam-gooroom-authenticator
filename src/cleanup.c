@@ -136,14 +136,13 @@ unmount_dirs (const char *homedir, GList *mount_dirs)
 	for (l = mount_dirs; l; l = l->next) {
 		char *mnt_dir = (char *)l->data;
 		if (g_str_equal (mnt_dir, homedir) || strstr (mnt_dir, homedir) != NULL) {
-			char *cmd = g_strdup_printf ("%s -ck %s", FUSER_COMMAND, mnt_dir);
+			const char *argv[] = { FUSER_COMMAND, "-ck", mnt_dir, NULL };
 
-			if (!g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
+			if (!run_argv_sync (argv, &error)) {
 				syslog (LOG_ERR, "pam_gooroom: Error attempting to unmount %s directory: [%s]", mnt_dir, error->message);
 				g_error_free (error);
 				ret = FALSE;
 			}
-			g_free (cmd);
 		}
 	}
 
@@ -153,13 +152,12 @@ unmount_dirs (const char *homedir, GList *mount_dirs)
 static gboolean
 kill_user_process (const char *deluser)
 {
-	char *cmd = NULL;
 	GError *error = NULL;
 	gboolean ret = FALSE;
 
-	cmd = g_strdup_printf ("%s -u %s", PKILL_COMMAND, deluser);
+	const char *argv[] = { PKILL_COMMAND, "-u", deluser, NULL };
 
-	if (g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
+	if (run_argv_sync (argv, &error)) {
 		ret = TRUE;
 	} else {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to kill %s's process : [%s]", deluser, error->message);
@@ -173,21 +171,18 @@ kill_user_process (const char *deluser)
 static gboolean
 delete_account (const char *deluser)
 {
-	char *cmd = NULL;
 	GError *error = NULL;
 	gboolean ret = FALSE;
 
-	cmd = g_strdup_printf ("%s -rf %s", USERDEL_COMMAND, deluser);
+	const char *argv[] = { USERDEL_COMMAND, "-rf", "--", deluser, NULL };
 
-	if (g_spawn_command_line_sync (cmd, NULL, NULL, NULL, &error)) {
+	if (run_argv_sync (argv, &error)) {
 		ret = TRUE;
 	} else {
 		syslog (LOG_ERR, "pam_gooroom: Error attempting to delete %s account: [%s]", deluser, error->message);
 		g_error_free (error);
 		ret = FALSE;
 	}
-
-	g_free (cmd);
 
 	return ret;
 }

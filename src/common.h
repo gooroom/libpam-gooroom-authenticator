@@ -47,6 +47,8 @@ char *create_hash (const char *user, const char *password, const char* encrypt_t
 
 char *parse_url   (void);
 
+gboolean run_argv_sync (const char * const *argv, GError **error);
+
 G_END_DECLS
 
 #endif
