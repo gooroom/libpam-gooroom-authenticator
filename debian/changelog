@@ -1,3 +1,12 @@
+pam-gooroom (4.2.1+grm4u1) unstable; urgency=medium
+
+  [ Security ]
+  * [#1546] KVE-2026-2839: account commands (adduser, chfn, userdel, pkill,
+    fuser, chown, rm) run as argument lists, so a user name or real name
+    from the server or the greeter cannot inject options into root commands.
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Mon, 19 Oct 2026 17:07:19 +0900
+
 pam-gooroom (4.2.0+grm4u1) unstable; urgency=medium
 
   * [#1417] Harden the setuid auth-check helper: clean environment, password on stdin, own account only.
